@@ -1,0 +1,254 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&display=swap');
+
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #0c0a09;
+  --surface:   #141210;
+  --surface2:  #1c1916;
+  --surface3:  #242018;
+  --border:    #2a2520;
+  --border2:   #3a342c;
+  --text:      #f0ebe3;
+  --text-muted:#8a7f72;
+  --text-dim:  #4a4238;
+  --green:     #6fcf97;
+  --green-dim: rgba(111,207,151,0.12);
+  --red:       #eb6b6b;
+  --red-dim:   rgba(235,107,107,0.12);
+  --gold:      #d4a853;
+  --gold-dim:  rgba(212,168,83,0.12);
+  --gold2:     #f0c96a;
+  --accent:    #c8956c;
+  --accent-dim:rgba(200,149,108,0.1);
+
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+  --font-mono:    'DM Mono', 'Courier New', monospace;
+
+  --radius-sm: 0.5rem;
+  --radius:    0.875rem;
+  --radius-lg: 1.25rem;
+
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow:    0 4px 24px rgba(0,0,0,0.5);
+  --shadow-lg: 0 8px 48px rgba(0,0,0,0.6);
+}
+
+[data-theme="light"] {
+  --bg:        #faf7f2;
+  --surface:   #ffffff;
+  --surface2:  #f5f0e8;
+  --surface3:  #ede8de;
+  --border:    #e0d8cc;
+  --border2:   #ccc4b4;
+  --text:      #1a1510;
+  --text-muted:#7a6e62;
+  --text-dim:  #c0b8ac;
+  --green:     #2a8a5a;
+  --green-dim: rgba(42,138,90,0.1);
+  --red:       #c04040;
+  --red-dim:   rgba(192,64,64,0.1);
+  --gold:      #a07828;
+  --gold-dim:  rgba(160,120,40,0.1);
+  --gold2:     #c09030;
+  --accent:    #9a6040;
+  --accent-dim:rgba(154,96,64,0.08);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow:    0 4px 24px rgba(0,0,0,0.1);
+  --shadow-lg: 0 8px 48px rgba(0,0,0,0.12);
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  transition: background 0.4s, color 0.4s;
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+.container {
+  max-width: 1140px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* ── Panel ───────────────────────────────────────────────────────────────── */
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  margin-bottom: 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.panel h2 {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+/* ── Form ────────────────────────────────────────────────────────────────── */
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.875rem;
+  align-items: end;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+label {
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+input, select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.65rem 0.9rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  width: 100%;
+  appearance: none;
+}
+
+input:focus, select:focus {
+  border-color: var(--gold);
+  background: var(--surface3);
+  box-shadow: 0 0 0 3px var(--gold-dim);
+}
+
+input::placeholder { color: var(--text-dim); }
+select option { background: var(--surface); }
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+  padding: 0.7rem 1.5rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  transition: all 0.2s;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn:active { transform: scale(0.98); }
+
+.btn-primary {
+  background: var(--gold);
+  color: #0c0a09;
+}
+.btn-primary:hover {
+  background: var(--gold2);
+  box-shadow: 0 4px 16px rgba(212,168,83,0.3);
+}
+.btn-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text-muted);
+}
+.btn-danger:hover {
+  border-color: var(--red);
+  color: var(--red);
+  background: var(--red-dim);
+}
+
+/* ── Input with eye toggle ───────────────────────────────────────────────── */
+.input-eye {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-eye input {
+  padding-right: 2.5rem;
+}
+
+.eye-btn {
+  position: absolute;
+  right: 0.6rem;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.2rem;
+  line-height: 1;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+}
+.eye-btn:hover { color: var(--gold); }
+
+/* ── Field feedback ──────────────────────────────────────────────────────── */
+.field-error {
+  font-size: 0.75rem;
+  color: var(--red);
+  margin-top: 0.25rem;
+  display: block;
+}
+
+.field-ok {
+  font-size: 0.75rem;
+  color: var(--green);
+  margin-top: 0.25rem;
+  display: block;
+}
+
+/* ── Feedback ────────────────────────────────────────────────────────────── */
+.error-msg {
+  color: var(--red);
+  font-size: 0.8rem;
+  margin-top: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.error-msg::before { content: '⚠'; }
+
+/* ── Page enter animation ────────────────────────────────────────────────── */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.container > * {
+  animation: fadeUp 0.4s ease both;
+}
+.container > *:nth-child(1) { animation-delay: 0.05s; }
+.container > *:nth-child(2) { animation-delay: 0.1s; }
+.container > *:nth-child(3) { animation-delay: 0.15s; }
+.container > *:nth-child(4) { animation-delay: 0.2s; }

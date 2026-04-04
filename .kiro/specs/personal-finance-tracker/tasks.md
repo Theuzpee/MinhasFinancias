@@ -1,0 +1,267 @@
+# Plano de Implementação: Personal Finance Tracker
+
+## Visão Geral
+
+Implementação incremental do Personal Finance Tracker usando n8n + Supabase + nginx + Cloudflare Tunnel. As tarefas seguem a ordem: infraestrutura → banco de dados → webhooks n8n → frontend → Gmail Monitor → integração Gemini → testes.
+
+Stack: Docker Compose, n8n v1+, Supabase (PostgreSQL), nginx, HTML/CSS/JS vanilla, Cloudflare Tunnel, Gmail API (OAuth 2.0), Gemini API (gemini-1.5-flash), fast-check + vitest.
+
+## Tarefas
+
+- [x] 1. Infraestrutura base: Docker Compose e configuração de ambiente
+  - [x] 1.1 Criar arquivo `docker-compose.yml` com serviços `n8n` e `frontend` (nginx:alpine)
+    - Serviço `n8n`: imagem `n8nio/n8n`, `restart: unless-stopped`, variáveis `N8N_USER_MANAGEMENT_JWT_SECRET`, `GEMINI_API_KEY`, `DB_POSTGRESDB_*`, `WEBHOOK_URL`, `N8N_CORS_ENABLE`, `N8N_CORS_ALLOWED_ORIGINS`, volume `n8n_data`, porta `5678:5678`
+    - Serviço `frontend`: imagem `nginx:alpine`, `restart: unless-stopped`, volume `./frontend:/usr/share/nginx/html:ro`, porta `8080:80`
+    - Volume nomeado `n8n_data`
+    - _Requisitos: 8.4, 8.5, 8.6, 8.7, 10.5_
+  - [ ]* 1.2 Verificar que `GEMINI_API_KEY` não aparece hardcoded no `docker-compose.yml`
+    - Teste unitário: ler o arquivo `docker-compose.yml` como string e assert que não contém nenhuma chave de API literal
+    - _Requisitos: 10.5_
+  - [x] 1.3 Criar arquivo `.env.example` com todas as variáveis necessárias sem valores reais
+    - Variáveis: `N8N_JWT_SECRET`, `GEMINI_API_KEY`, `DB_POSTGRESDB_HOST`, `DB_POSTGRESDB_PORT`, `DB_POSTGRESDB_DATABASE`, `DB_POSTGRESDB_USER`, `DB_POSTGRESDB_PASSWORD`
+    - _Requisitos: 8.5, 10.5_
+  - [x] 1.4 Criar script de configuração do Cloudflare Tunnel em `infra/cloudflared-setup.sh`
+    - Instala `cloudflared`, cria `/etc/cloudflared/config.yml` com dois ingress rules: `api.<dominio>` → `http://localhost:5678` e `app.<dominio>` → `http://localhost:8080`
+    - Registra `cloudflared` como serviço systemd com `Restart=on-failure`
+    - _Requisitos: 8.9, 8.10, 8.11, 8.12_
+
+- [ ] 2. Schema do banco de dados (Supabase/PostgreSQL)
+  - [ ] 2.1 Criar arquivo `db/schema.sql` com todas as tabelas do modelo de dados
+    - Tabelas: `transactions`, `categories`, `savings_goals`, `alert_rules`, `alerts`, `processed_emails`
+    - Incluir constraints: `CHECK (type IN ('receita', 'despesa'))`, `CHECK (amount > 0)`, `CHECK (target_amount > 0)`, `CHECK (limit_amount > 0)`
+    - Inserir categorias padrão na tabela `categories`: Alimentação, Transporte, Moradia, Saúde, Educação, Lazer, Salário, Outros (com `is_default = true`)
+    - _Requisitos: 1.2, 3.1, 3.3, 5.1, 6.1_
+  - [ ]* 2.2 Escrever testes unitários para validar o schema SQL
+    - Verificar que as categorias padrão estão presentes após seed
+    - Verificar que constraints de CHECK rejeitam valores inválidos
+    - _Requisitos: 3.1_
+
+- [ ] 3. Funções puras de lógica de negócio (TypeScript/JS)
+  - [ ] 3.1 Criar `src/validation.ts` com funções de validação de transação
+    - `validateTransaction(payload)`: retorna `{ valid: true }` ou `{ valid: false, error: string }` para campos obrigatórios ausentes, valor ≤ 0, tipo fora do domínio, data malformada
+    - `validateGoal(payload)`: rejeita `targetAmount ≤ 0`
+    - _Requisitos: 1.2, 1.3, 1.5, 5.4_
+  - [ ]* 3.2 Escrever teste de propriedade P2: Rejeição de entradas inválidas
+    - **Property 2: Rejeição de entradas inválidas**
+    - **Validates: Requirements 1.3, 1.5**
+    - `fc.property(invalidTransactionArb, (payload) => validateTransaction(payload).valid === false)`
+  - [ ]* 3.3 Escrever teste de propriedade P12: Rejeição de meta com valor inválido
+    - **Property 12: Rejeição de meta com valor inválido**
+    - **Validates: Requirements 5.4**
+    - `fc.property(fc.integer({ max: 0 }), (v) => validateGoal({ targetAmount: v }).valid === false)`
+  - [ ] 3.4 Criar `src/report.ts` com função `calculateMonthlyReport(transactions, period)`
+    - Calcula `totalIncome`, `totalExpenses`, `balance`, `byCategory[]` com `total`, `percentage` e `highlighted` (percentage > 50%)
+    - _Requisitos: 4.1, 4.4_
+  - [ ]* 3.5 Escrever teste de propriedade P8: Aritmética do relatório mensal
+    - **Property 8: Aritmética do relatório mensal**
+    - **Validates: Requirements 4.1**
+    - `fc.property(fc.array(transactionArb), periodArb, (txs, period) => { const r = calculateMonthlyReport(txs, period); return r.balance === r.totalIncome - r.totalExpenses && sum(r.byCategory) === r.totalExpenses })`
+  - [ ]* 3.6 Escrever teste de propriedade P9: Regra de destaque de categoria
+    - **Property 9: Regra de destaque de categoria**
+    - **Validates: Requirements 4.4**
+    - `fc.property(fc.array(transactionArb, { minLength: 1 }), (txs) => { const r = calculateMonthlyReport(txs, "2024-01"); return r.byCategory.every(c => c.highlighted === (c.percentage > 50)) })`
+  - [ ] 3.7 Criar `src/csv.ts` com funções `exportToCsv(transactions)` e `importFromCsv(csvString)`
+    - `exportToCsv`: gera string CSV com header `data,descricao,categoria,tipo,valor` e uma linha por transação
+    - `importFromCsv`: parseia CSV e retorna array de objetos com os mesmos campos
+    - _Requisitos: 7.1, 7.4_
+  - [ ]* 3.8 Escrever teste de propriedade P14: Completude do CSV exportado
+    - **Property 14: Completude do CSV exportado**
+    - **Validates: Requirements 7.1**
+    - `fc.property(fc.array(transactionArb, { minLength: 1 }), (txs) => { const csv = exportToCsv(txs); const lines = csv.trim().split('\n'); return lines.length === txs.length + 1 && lines.slice(1).every(l => l.split(',').length >= 5) })`
+  - [ ]* 3.9 Escrever teste de propriedade P15: Round-trip de exportação/importação CSV
+    - **Property 15: Round-trip de exportação/importação CSV**
+    - **Validates: Requirements 7.4**
+    - `fc.property(fc.array(transactionArb, { minLength: 1 }), (txs) => deepEqual(importFromCsv(exportToCsv(txs)), txs))`
+  - [ ] 3.10 Criar `src/filter.ts` com função `filterTransactions(transactions, filter)`
+    - Filtra por `category` e/ou `type`; retorna todos os registros que satisfazem o critério
+    - _Requisitos: 2.4_
+  - [ ]* 3.11 Escrever teste de propriedade P5: Correção do filtro de transações
+    - **Property 5: Correção do filtro de transações**
+    - **Validates: Requirements 2.4**
+    - `fc.property(fc.array(transactionArb), filterArb, (txs, f) => { const result = filterTransactions(txs, f); return result.every(t => matchesFilter(t, f)) && txs.filter(t => matchesFilter(t, f)).length === result.length })`
+  - [ ] 3.12 Criar `src/goalStatus.ts` com função `checkGoalCompletion(goal, transactions)`
+    - Retorna `"completed"` se `balance >= targetAmount`, caso contrário `"active"`
+    - _Requisitos: 5.3_
+  - [ ]* 3.13 Escrever teste de propriedade P11: Regra de conclusão de meta
+    - **Property 11: Regra de conclusão de meta**
+    - **Validates: Requirements 5.3**
+    - `fc.property(goalArb, fc.array(transactionArb), (goal, txs) => { const balance = calcBalance(txs); const status = checkGoalCompletion(goal, txs); return (balance >= goal.targetAmount) === (status === 'completed') })`
+  - [ ] 3.13 Criar `src/alertCheck.ts` com função `checkAlertTriggered(rule, transactions)`
+    - Retorna `true` se a soma das despesas da categoria no período ultrapassar `limitAmount`
+    - _Requisitos: 6.2, 6.3_
+  - [ ]* 3.14 Escrever teste de propriedade P13: Geração de alerta por limite excedido
+    - **Property 13: Geração de alerta por limite excedido**
+    - **Validates: Requirements 6.3**
+    - `fc.property(alertRuleArb, fc.array(expenseArb, { minLength: 1 }), (rule, expenses) => { const total = sum(expenses); return checkAlertTriggered(rule, expenses) === (total > rule.limitAmount) })`
+
+- [ ] 4. Checkpoint — Testes de funções puras
+  - Garantir que todos os testes de `src/` passam com `vitest --run`
+  - Verificar cobertura das propriedades P2, P5, P8, P9, P11, P12, P13, P14, P15
+
+- [ ] 5. Webhooks n8n — Transações
+  - [ ] 5.1 Criar workflow n8n `POST /webhook/transaction`
+    - Nó Webhook → Nó Function (validação via `validateTransaction`) → Nó Postgres (INSERT em `transactions`) → Nó Respond to Webhook
+    - Retorna `{ success: true, data: { id, message } }` ou `{ success: false, error: "..." }`
+    - _Requisitos: 1.1, 1.2, 1.3_
+  - [ ]* 5.2 Escrever teste de propriedade P1: Transaction round-trip
+    - **Property 1: Transaction round-trip**
+    - **Validates: Requirements 1.2**
+    - `fc.property(validTransactionArb, async (tx) => { const { id } = await postTransaction(tx); const retrieved = await getTransaction(id); return deepEqual(retrieved, { ...tx, id }) })`
+    - Usar Supabase client mockado via vitest mock
+  - [ ]* 5.3 Escrever teste de propriedade P6: Invariante de categoria única por transação
+    - **Property 6: Invariante de categoria única por transação**
+    - **Validates: Requirements 3.3**
+    - `fc.property(validTransactionArb, async (tx) => { const stored = await postTransaction(tx); return stored.category !== null && stored.category !== '' })`
+  - [ ] 5.4 Criar workflow n8n `GET /webhook/transactions`
+    - Query params: `start`, `end`, `category`, `type`
+    - Nó Postgres: `SELECT ... ORDER BY date DESC`
+    - _Requisitos: 2.1, 2.2_
+  - [ ]* 5.5 Escrever teste de propriedade P3: Ordenação da listagem de transações
+    - **Property 3: Ordenação da listagem de transações**
+    - **Validates: Requirements 2.2**
+    - `fc.property(fc.array(transactionArb, { minLength: 2 }), async (txs) => { await insertAll(txs); const result = await getTransactions(); return isSortedDescByDate(result) })`
+  - [ ] 5.6 Criar workflow n8n `GET /webhook/report`
+    - Query params: `year`, `month`
+    - Usa lógica de `calculateMonthlyReport` em Nó Function
+    - _Requisitos: 4.1, 4.4_
+  - [ ] 5.7 Criar workflow n8n `GET /webhook/export`
+    - Query params: `start`, `end`
+    - Usa `exportToCsv`; retorna erro `{ success: false, error: "Nenhuma transação encontrada no período selecionado" }` se vazio
+    - _Requisitos: 7.1, 7.3_
+
+- [ ] 6. Webhooks n8n — Categorias, Metas e Alertas
+  - [ ] 6.1 Criar workflow n8n `GET /webhook/categories`
+    - SELECT em `categories` ordenado por `name`
+    - _Requisitos: 3.1, 3.2_
+  - [ ] 6.2 Criar workflows n8n `POST /webhook/category` e `DELETE /webhook/category/:id`
+    - POST: INSERT em `categories` com `is_default = false`
+    - DELETE: DELETE por `id` (apenas categorias com `is_default = false`)
+    - _Requisitos: 3.4_
+  - [ ]* 6.3 Escrever teste de propriedade P7: Round-trip de categorias personalizadas
+    - **Property 7: Round-trip de categorias personalizadas**
+    - **Validates: Requirements 3.4**
+    - `fc.property(categoryNameArb, async (name) => { await createCategory(name); const list = await getCategories(); const found = list.some(c => c.name === name); await deleteCategory(name); const listAfter = await getCategories(); return found && !listAfter.some(c => c.name === name) })`
+  - [ ] 6.4 Criar workflows n8n `POST /webhook/goal` e `GET /webhook/goal`
+    - POST: valida `targetAmount > 0`, INSERT em `savings_goals`
+    - GET: retorna meta ativa com progresso calculado (saldo atual vs. targetAmount)
+    - Ao calcular progresso, chama `checkGoalCompletion` e atualiza `status` se necessário
+    - _Requisitos: 5.1, 5.2, 5.3, 5.4_
+  - [ ]* 6.5 Escrever teste de propriedade P10: Round-trip de meta de economia
+    - **Property 10: Round-trip de meta de economia**
+    - **Validates: Requirements 5.1**
+    - `fc.property(goalArb, async (goal) => { await createGoal(goal); const retrieved = await getGoal(); return retrieved.targetAmount === goal.targetAmount && retrieved.period === goal.period && retrieved.status === 'active' })`
+  - [ ] 6.6 Criar workflows n8n `POST /webhook/alert-rule` e `GET /webhook/alerts`
+    - POST: INSERT em `alert_rules`
+    - GET: SELECT em `alerts` onde `acknowledged = false`
+    - Após cada INSERT em `transactions` (despesa), verificar regras ativas e inserir em `alerts` se limite excedido
+    - _Requisitos: 6.1, 6.2, 6.3, 6.4_
+
+- [ ] 7. Checkpoint — Webhooks n8n
+  - Garantir que todos os testes de integração dos webhooks passam com `vitest --run`
+  - Verificar cobertura das propriedades P1, P3, P6, P7, P10
+
+- [ ] 8. Frontend — Estrutura base e Dashboard
+  - [ ] 8.1 Criar `frontend/index.html` com estrutura de página única e seções: Dashboard, Histórico, Relatório, Metas, Alertas, Exportar, E-mails Pendentes
+    - Navegação por tabs/seções com JS vanilla
+    - Incluir Chart.js via CDN
+    - _Requisitos: 2.1, 4.2, 5.2, 6.4_
+  - [ ] 8.2 Criar `frontend/css/style.css` com estilos base
+    - Destaque visual para saldo positivo (verde) e negativo (vermelho) — Requisito 4.3
+    - Estilo destacado para alertas ativos — Requisito 6.4
+    - Barra de progresso para meta de economia — Requisito 5.2
+  - [ ] 8.3 Criar `frontend/js/api.js` com funções de fetch para todos os webhooks n8n
+    - `BASE_URL` configurável via constante (domínio Cloudflare)
+    - Funções: `postTransaction`, `getTransactions`, `getReport`, `exportData`, `postGoal`, `getGoal`, `postAlertRule`, `getAlerts`, `getCategories`, `postCategory`, `deleteCategory`, `getPendingEmails`
+    - _Requisitos: 8.8_
+
+- [ ] 9. Frontend — Formulários e Listagem
+  - [ ] 9.1 Implementar formulário de registro de transação em `frontend/js/transaction-form.js`
+    - Campos: valor, data, descrição, categoria (select populado via `getCategories`), tipo (receita/despesa)
+    - Submit: chama `postTransaction`, exibe confirmação visual em caso de sucesso, exibe erro descritivo em caso de falha
+    - _Requisitos: 1.1, 1.4, 3.2_
+  - [ ] 9.2 Implementar listagem de transações em `frontend/js/transaction-list.js`
+    - Renderiza cada transação com: data, descrição, categoria, tipo e valor
+    - Filtros por categoria e tipo aplicados no frontend via `filterTransactions`
+    - Exibe mensagem "Nenhuma transação encontrada para o período selecionado." quando lista vazia
+    - _Requisitos: 2.3, 2.4, 2.5_
+  - [ ]* 9.3 Escrever teste de propriedade P4: Completude da renderização de transações
+    - **Property 4: Completude da renderização de transações**
+    - **Validates: Requirements 2.3**
+    - `fc.property(transactionArb, (tx) => { const html = renderTransaction(tx); return ['date','description','category','type','amount'].every(field => html.includes(String(tx[field]))) })`
+
+- [ ] 10. Frontend — Relatório, Metas, Alertas e Exportação
+  - [ ] 10.1 Implementar seção de relatório mensal em `frontend/js/report.js`
+    - Exibe `totalIncome`, `totalExpenses`, `balance` com destaque visual
+    - Renderiza gráfico de pizza com Chart.js mostrando distribuição por categoria
+    - _Requisitos: 4.2, 4.3_
+  - [ ] 10.2 Implementar seção de metas em `frontend/js/goal.js`
+    - Formulário para criar meta (valor + período)
+    - Barra de progresso mostrando valor economizado vs. alvo
+    - _Requisitos: 5.1, 5.2_
+  - [ ] 10.3 Implementar seção de alertas em `frontend/js/alerts.js`
+    - Exibe alertas ativos de forma destacada na tela principal
+    - _Requisitos: 6.4_
+  - [ ] 10.4 Implementar seção de exportação em `frontend/js/export.js`
+    - Formulário com seleção de período; ao receber CSV do backend, dispara download via `Blob` + `URL.createObjectURL`
+    - _Requisitos: 7.2_
+
+- [ ] 11. Gmail Monitor Workflow (n8n)
+  - [ ] 11.1 Criar workflow n8n `Gmail Monitor` com Schedule Trigger (a cada 15 minutos)
+    - Nó Gmail: busca e-mails com filtros de remetentes bancários (labels/query configurável)
+    - Nó Postgres: verifica `processed_emails` por `message_id` (idempotência)
+    - Nó IF: ramifica entre "já processado" e "novo"
+    - _Requisitos: 9.1, 9.2, 9.5, 9.6_
+  - [ ] 11.2 Adicionar tratamento de falha de autenticação OAuth Gmail
+    - Se autenticação falhar, registrar erro no log do n8n e interromper o ciclo (não continuar para próximos e-mails)
+    - _Requisitos: 9.8_
+  - [ ]* 11.3 Escrever teste de propriedade P16: Idempotência no processamento de e-mails
+    - **Property 16: Idempotência no processamento de e-mails**
+    - **Validates: Requirements 9.5, 9.6**
+    - `fc.property(emailArb, async (email) => { await processEmail(email); const countBefore = await countTransactions(); await processEmail(email); const countAfter = await countTransactions(); return countBefore === countAfter })`
+
+- [ ] 12. Integração Gemini API
+  - [ ] 12.1 Criar função `src/gemini.ts` com `extractTransactionData(emailBody)`
+    - Chama `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`
+    - Prompt estruturado solicitando JSON: `{ valor, descricao, tipo, categoria, confianca }`
+    - Retorna o JSON parseado ou lança erro em caso de falha
+    - _Requisitos: 10.1_
+  - [ ] 12.2 Integrar `extractTransactionData` no workflow Gmail Monitor
+    - Nó HTTP Request: chama Gemini API com corpo do e-mail
+    - Nó IF: `confianca >= 0.7` e todos os campos presentes → INSERT em `transactions` + INSERT em `processed_emails` com `status: "processed"`
+    - Caso contrário → INSERT em `processed_emails` com `status: "pending_review"`
+    - _Requisitos: 10.2, 10.3, 9.3, 9.4, 9.7_
+  - [ ] 12.3 Implementar tratamento de erros da Gemini API no workflow
+    - Gemini indisponível ou erro HTTP: registrar erro, marcar e-mail como `pending_review`, continuar ciclo
+    - Rate limit (1500 req/dia atingido): registrar aviso, marcar e-mails pendentes para próximo ciclo, não interromper monitoramento
+    - _Requisitos: 10.4, 10.6_
+  - [ ]* 12.4 Escrever teste de propriedade P17: Extração falha → revisão manual
+    - **Property 17: Extração falha → revisão manual**
+    - **Validates: Requirements 9.7, 10.3, 10.4**
+    - `fc.property(failedExtractionArb, async (scenario) => { await processEmailWithGemini(scenario); const record = await getProcessedEmail(scenario.messageId); return record.status === 'pending_review' && await countTransactions() === 0 })`
+  - [ ]* 12.5 Escrever teste de propriedade P18: Transação completa após extração bem-sucedida
+    - **Property 18: Transação completa após extração bem-sucedida**
+    - **Validates: Requirements 10.2, 10.7**
+    - `fc.property(successfulExtractionArb, async (scenario) => { const tx = await processEmailWithGemini(scenario); return tx.amount && tx.description && tx.type && tx.category })`
+  - [ ]* 12.6 Escrever teste de propriedade P19: Rate limit da Gemini → e-mails pendentes
+    - **Property 19: Rate limit da Gemini → e-mails pendentes**
+    - **Validates: Requirements 10.6**
+    - `fc.property(emailArb, async (email) => { simulateRateLimit(); await processEmailWithGemini(email); const record = await getProcessedEmail(email.messageId); return record.status === 'pending_review' && monitoringCycleStillRunning() })`
+  - [ ] 12.7 Criar workflow n8n `GET /webhook/pending-emails`
+    - SELECT em `processed_emails` onde `status = 'pending_review'`
+    - _Requisitos: 9.7, 10.3_
+  - [ ] 12.8 Implementar seção "E-mails Pendentes" no frontend (`frontend/js/pending-emails.js`)
+    - Lista e-mails com `status: "pending_review"` para revisão manual
+    - _Requisitos: 9.7_
+
+- [ ] 13. Checkpoint final — Todos os testes
+  - Executar `vitest --run` e garantir que todos os testes passam
+  - Verificar cobertura das propriedades P1–P19
+  - Garantir que `docker-compose.yml` não contém valores de credenciais hardcoded
+
+## Notas
+
+- Tarefas marcadas com `*` são opcionais e podem ser puladas para um MVP mais rápido
+- Cada tarefa referencia requisitos específicos para rastreabilidade
+- Os checkpoints garantem validação incremental antes de avançar para a próxima fase
+- Testes de propriedade usam `fast-check` + `vitest`; integrações externas são mockadas via vitest mock
+- Configuração de testes: `numRuns: 100` por propriedade (padrão fast-check)
