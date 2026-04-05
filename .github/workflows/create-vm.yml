@@ -16,9 +16,11 @@ jobs:
       - name: Configure OCI credentials
         env:
           SUPPRESS_LABEL_WARNING: "true"
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.oci
-          printf '%s\nOCI_API_KEY\n' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          echo "$OCI_PRIVATE_KEY" > ~/.oci/oci_api_key.pem
+          echo "OCI_API_KEY" >> ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
           cat > ~/.oci/config <<EOF
 [DEFAULT]
@@ -28,8 +30,6 @@ key_file=/home/runner/.oci/oci_api_key.pem
 tenancy=${{ secrets.OCI_TENANCY_OCID }}
 region=sa-saopaulo-1
 EOF
-          echo "==> OCI config:"
-          cat ~/.oci/config
           echo "==> Testing OCI auth..."
           oci iam region list --output table
 
