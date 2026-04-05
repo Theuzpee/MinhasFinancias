@@ -2,21 +2,26 @@ name: Create Oracle Cloud VM
 
 on:
   schedule:
-    - cron: '*/10 * * * *'  # tenta a cada 10 minutos
-  workflow_dispatch:          # permite rodar manualmente
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+env:
+  SUPPRESS_LABEL_WARNING: "true"
+  OCI_USER: ${{ secrets.OCI_USER_OCID }}
+  OCI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
+  OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+  OCI_SUBNET: ${{ secrets.OCI_SUBNET_OCID }}
+  OCI_SSH_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
+  OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
 
 jobs:
   create-vm:
     runs-on: ubuntu-latest
     steps:
       - name: Setup OCI CLI
-        run: |
-          pip install oci-cli --quiet
+        run: pip install oci-cli --quiet
 
       - name: Configure OCI credentials
-        env:
-          SUPPRESS_LABEL_WARNING: "true"
-          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.oci
           echo "$OCI_PRIVATE_KEY" > ~/.oci/oci_api_key.pem
@@ -24,22 +29,19 @@ jobs:
           chmod 600 ~/.oci/oci_api_key.pem
           cat > ~/.oci/config <<EOF
 [DEFAULT]
-user=${{ secrets.OCI_USER_OCID }}
-fingerprint=${{ secrets.OCI_FINGERPRINT }}
+user=${OCI_USER}
+fingerprint=${OCI_FINGERPRINT}
 key_file=/home/runner/.oci/oci_api_key.pem
-tenancy=${{ secrets.OCI_TENANCY_OCID }}
+tenancy=${OCI_TENANCY}
 region=sa-saopaulo-1
 EOF
-          echo "==> Testing OCI auth..."
           oci iam region list --output table
 
-      - name: Get Ubuntu ARM image
-        id: image
-        env:
-          SUPPRESS_LABEL_WARNING: true
+      - name: Get image and AD
+        id: info
         run: |
           IMAGE_ID=$(oci compute image list \
-            --compartment-id ${{ secrets.OCI_TENANCY_OCID }} \
+            --compartment-id "$OCI_TENANCY" \
             --operating-system "Canonical Ubuntu" \
             --operating-system-version "22.04" \
             --shape "VM.Standard.A1.Flex" \
@@ -49,54 +51,44 @@ EOF
             --raw-output)
           echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
 
-      - name: Get Availability Domain
-        id: ad
-        env:
-          SUPPRESS_LABEL_WARNING: true
-        run: |
           AD=$(oci iam availability-domain list \
-            --compartment-id ${{ secrets.OCI_TENANCY_OCID }} \
+            --compartment-id "$OCI_TENANCY" \
             --query 'data[0].name' \
             --raw-output)
           echo "ad=$AD" >> $GITHUB_OUTPUT
 
+          echo "Image: $IMAGE_ID"
+          echo "AD: $AD"
+
       - name: Try to create VM
         id: create
-        env:
-          SUPPRESS_LABEL_WARNING: true
         run: |
-          echo '${{ secrets.OCI_SSH_PUBLIC_KEY }}' > /tmp/ssh_key.pub
-
-          cat > /tmp/shape_config.json << 'EOF'
-          {"ocpus": 4, "memoryInGBs": 24}
-          EOF
+          echo "$OCI_SSH_KEY" > /tmp/ssh_key.pub
+          echo '{"ocpus": 4, "memoryInGBs": 24}' > /tmp/shape_config.json
 
           OUTPUT=$(oci compute instance launch \
-            --compartment-id ${{ secrets.OCI_TENANCY_OCID }} \
-            --availability-domain "${{ steps.ad.outputs.ad }}" \
+            --compartment-id "$OCI_TENANCY" \
+            --availability-domain "${{ steps.info.outputs.ad }}" \
             --shape "VM.Standard.A1.Flex" \
             --shape-config file:///tmp/shape_config.json \
-            --subnet-id ${{ secrets.OCI_SUBNET_OCID }} \
-            --image-id "${{ steps.image.outputs.image_id }}" \
+            --subnet-id "$OCI_SUBNET" \
+            --image-id "${{ steps.info.outputs.image_id }}" \
             --display-name "n8n-server" \
             --ssh-authorized-keys-file /tmp/ssh_key.pub \
             --assign-public-ip true 2>&1) && SUCCESS=true || SUCCESS=false
 
           if $SUCCESS; then
-            PUBLIC_IP=$(echo "$OUTPUT" | python3 -c "
-          import sys, json, time
-          data = json.load(sys.stdin)
-          print(data['data']['id'])
-          " 2>/dev/null || echo "")
             echo "success=true" >> $GITHUB_OUTPUT
-            echo "instance_output=$OUTPUT" >> $GITHUB_OUTPUT
+            INSTANCE_ID=$(echo "$OUTPUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null || echo "")
+            echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
+            echo "✅ VM criada! Instance ID: $INSTANCE_ID"
           else
-            if echo "$OUTPUT" | grep -q -i "capacity\|host capacity"; then
+            if echo "$OUTPUT" | grep -qi "capacity"; then
               echo "success=false" >> $GITHUB_OUTPUT
-              echo "Out of capacity — will retry in 10 minutes"
+              echo "⏳ Sem capacidade — tentando novamente em 10 minutos"
               exit 0
             else
-              echo "Unexpected error:"
+              echo "❌ Erro inesperado:"
               echo "$OUTPUT"
               exit 1
             fi
@@ -105,17 +97,7 @@ EOF
       - name: Disable workflow after success
         if: steps.create.outputs.success == 'true'
         run: |
-          echo "✅ VM criada com sucesso!"
-          echo "${{ steps.create.outputs.instance_output }}" | python3 -c "
-          import sys, json
-          data = json.load(sys.stdin)
-          print('Instance ID:', data['data']['id'])
-          print('State:', data['data']['lifecycle-state'])
-          " 2>/dev/null || true
-          # Desabilita o workflow para parar as tentativas
-          gh api \
-            --method PUT \
-            repos/${{ github.repository }}/actions/workflows/create-vm.yml/disable \
-            || true
+          gh api --method PUT \
+            repos/${{ github.repository }}/actions/workflows/create-vm.yml/disable || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
