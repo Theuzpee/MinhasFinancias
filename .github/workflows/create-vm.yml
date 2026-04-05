@@ -14,20 +14,24 @@ jobs:
           pip install oci-cli --quiet
 
       - name: Configure OCI credentials
+        env:
+          SUPPRESS_LABEL_WARNING: "true"
         run: |
           mkdir -p ~/.oci
-          printf '%s\nOCI_API_KEY' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          printf '%s\nOCI_API_KEY\n' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
-          cat > ~/.oci/config << EOF
-          [DEFAULT]
-          user=${{ secrets.OCI_USER_OCID }}
-          fingerprint=${{ secrets.OCI_FINGERPRINT }}
-          key_file=~/.oci/oci_api_key.pem
-          tenancy=${{ secrets.OCI_TENANCY_OCID }}
-          region=sa-saopaulo-1
-          EOF
-        env:
-          SUPPRESS_LABEL_WARNING: true
+          cat > ~/.oci/config <<EOF
+[DEFAULT]
+user=${{ secrets.OCI_USER_OCID }}
+fingerprint=${{ secrets.OCI_FINGERPRINT }}
+key_file=/home/runner/.oci/oci_api_key.pem
+tenancy=${{ secrets.OCI_TENANCY_OCID }}
+region=sa-saopaulo-1
+EOF
+          echo "==> OCI config:"
+          cat ~/.oci/config
+          echo "==> Testing OCI auth..."
+          oci iam region list --output table
 
       - name: Get Ubuntu ARM image
         id: image
