@@ -16,7 +16,7 @@ jobs:
       - name: Configure OCI credentials
         run: |
           mkdir -p ~/.oci
-          echo "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
+          printf '%s\nOCI_API_KEY' "${{ secrets.OCI_PRIVATE_KEY }}" > ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
           cat > ~/.oci/config << EOF
           [DEFAULT]
@@ -26,9 +26,13 @@ jobs:
           tenancy=${{ secrets.OCI_TENANCY_OCID }}
           region=sa-saopaulo-1
           EOF
+        env:
+          SUPPRESS_LABEL_WARNING: true
 
       - name: Get Ubuntu ARM image
         id: image
+        env:
+          SUPPRESS_LABEL_WARNING: true
         run: |
           IMAGE_ID=$(oci compute image list \
             --compartment-id ${{ secrets.OCI_TENANCY_OCID }} \
@@ -43,6 +47,8 @@ jobs:
 
       - name: Get Availability Domain
         id: ad
+        env:
+          SUPPRESS_LABEL_WARNING: true
         run: |
           AD=$(oci iam availability-domain list \
             --compartment-id ${{ secrets.OCI_TENANCY_OCID }} \
@@ -52,6 +58,8 @@ jobs:
 
       - name: Try to create VM
         id: create
+        env:
+          SUPPRESS_LABEL_WARNING: true
         run: |
           echo '${{ secrets.OCI_SSH_PUBLIC_KEY }}' > /tmp/ssh_key.pub
 
