@@ -5,43 +5,44 @@ on:
     - cron: '*/10 * * * *'
   workflow_dispatch:
 
-env:
-  SUPPRESS_LABEL_WARNING: "true"
-  OCI_USER: ${{ secrets.OCI_USER_OCID }}
-  OCI_TENANCY: ${{ secrets.OCI_TENANCY_OCID }}
-  OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
-  OCI_SUBNET: ${{ secrets.OCI_SUBNET_OCID }}
-  OCI_SSH_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
-  OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
-
 jobs:
   create-vm:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPPRESS_LABEL_WARNING: "true"
+
     steps:
       - name: Setup OCI CLI
         run: pip install oci-cli --quiet
 
       - name: Configure OCI credentials
+        env:
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+          OCI_USER_OCID: ${{ secrets.OCI_USER_OCID }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
         run: |
           mkdir -p ~/.oci
-          echo "$OCI_PRIVATE_KEY" > ~/.oci/oci_api_key.pem
-          echo "OCI_API_KEY" >> ~/.oci/oci_api_key.pem
+          echo "$OCI_PRIVATE_KEY"    >  ~/.oci/oci_api_key.pem
+          echo "OCI_API_KEY"         >> ~/.oci/oci_api_key.pem
           chmod 600 ~/.oci/oci_api_key.pem
-          cat > ~/.oci/config <<EOF
-[DEFAULT]
-user=${OCI_USER}
-fingerprint=${OCI_FINGERPRINT}
-key_file=/home/runner/.oci/oci_api_key.pem
-tenancy=${OCI_TENANCY}
-region=sa-saopaulo-1
-EOF
+          echo "[DEFAULT]"                                      >  ~/.oci/config
+          echo "user=$OCI_USER_OCID"                            >> ~/.oci/config
+          echo "fingerprint=$OCI_FINGERPRINT"                   >> ~/.oci/config
+          echo "key_file=/home/runner/.oci/oci_api_key.pem"     >> ~/.oci/config
+          echo "tenancy=$OCI_TENANCY_OCID"                      >> ~/.oci/config
+          echo "region=sa-saopaulo-1"                           >> ~/.oci/config
+          echo "==> Testing auth..."
           oci iam region list --output table
 
-      - name: Get image and AD
+      - name: Get Ubuntu 22.04 ARM image and Availability Domain
         id: info
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
         run: |
           IMAGE_ID=$(oci compute image list \
-            --compartment-id "$OCI_TENANCY" \
+            --compartment-id "$OCI_TENANCY_OCID" \
             --operating-system "Canonical Ubuntu" \
             --operating-system-version "22.04" \
             --shape "VM.Standard.A1.Flex" \
@@ -49,46 +50,51 @@ EOF
             --sort-order DESC \
             --query 'data[0].id' \
             --raw-output)
-          echo "image_id=$IMAGE_ID" >> $GITHUB_OUTPUT
 
           AD=$(oci iam availability-domain list \
-            --compartment-id "$OCI_TENANCY" \
+            --compartment-id "$OCI_TENANCY_OCID" \
             --query 'data[0].name' \
             --raw-output)
-          echo "ad=$AD" >> $GITHUB_OUTPUT
 
+          echo "image_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "ad=$AD"             >> "$GITHUB_OUTPUT"
           echo "Image: $IMAGE_ID"
-          echo "AD: $AD"
+          echo "AD:    $AD"
 
       - name: Try to create VM
         id: create
+        env:
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY_OCID }}
+          OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
+          OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
         run: |
-          echo "$OCI_SSH_KEY" > /tmp/ssh_key.pub
+          echo "$OCI_SSH_PUBLIC_KEY" > /tmp/ssh_key.pub
           echo '{"ocpus": 4, "memoryInGBs": 24}' > /tmp/shape_config.json
 
           OUTPUT=$(oci compute instance launch \
-            --compartment-id "$OCI_TENANCY" \
+            --compartment-id "$OCI_TENANCY_OCID" \
             --availability-domain "${{ steps.info.outputs.ad }}" \
             --shape "VM.Standard.A1.Flex" \
-            --shape-config file:///tmp/shape_config.json \
-            --subnet-id "$OCI_SUBNET" \
+            --shape-config "file:///tmp/shape_config.json" \
+            --subnet-id "$OCI_SUBNET_OCID" \
             --image-id "${{ steps.info.outputs.image_id }}" \
             --display-name "n8n-server" \
             --ssh-authorized-keys-file /tmp/ssh_key.pub \
             --assign-public-ip true 2>&1) && SUCCESS=true || SUCCESS=false
 
           if $SUCCESS; then
-            echo "success=true" >> $GITHUB_OUTPUT
-            INSTANCE_ID=$(echo "$OUTPUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null || echo "")
-            echo "instance_id=$INSTANCE_ID" >> $GITHUB_OUTPUT
-            echo "✅ VM criada! Instance ID: $INSTANCE_ID"
+            INSTANCE_ID=$(echo "$OUTPUT" | python3 -c \
+              "import sys,json; print(json.load(sys.stdin)['data']['id'])" 2>/dev/null || echo "")
+            echo "success=true"           >> "$GITHUB_OUTPUT"
+            echo "instance_id=$INSTANCE_ID" >> "$GITHUB_OUTPUT"
+            echo "VM criada! Instance ID: $INSTANCE_ID"
           else
             if echo "$OUTPUT" | grep -qi "capacity"; then
-              echo "success=false" >> $GITHUB_OUTPUT
-              echo "⏳ Sem capacidade — tentando novamente em 10 minutos"
+              echo "success=false" >> "$GITHUB_OUTPUT"
+              echo "Sem capacidade - tentando novamente em 10 minutos"
               exit 0
             else
-              echo "❌ Erro inesperado:"
+              echo "Erro inesperado:"
               echo "$OUTPUT"
               exit 1
             fi
@@ -96,8 +102,9 @@ EOF
 
       - name: Disable workflow after success
         if: steps.create.outputs.success == 'true'
-        run: |
-          gh api --method PUT \
-            repos/${{ github.repository }}/actions/workflows/create-vm.yml/disable || true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PUT \
+            "repos/${{ github.repository }}/actions/workflows/create-vm.yml/disable" || true
+          echo "Workflow desabilitado. VM no ar!"
