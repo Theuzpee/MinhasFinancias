@@ -11,6 +11,7 @@ jobs:
     timeout-minutes: 15
     env:
       SUPPRESS_LABEL_WARNING: "true"
+      OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
 
     steps:
       - name: Setup OCI CLI
@@ -33,8 +34,13 @@ jobs:
           echo "key_file=/home/runner/.oci/oci_api_key.pem"     >> ~/.oci/config
           echo "tenancy=$OCI_TENANCY_OCID"                      >> ~/.oci/config
           echo "region=sa-saopaulo-1"                           >> ~/.oci/config
+          chmod 600 ~/.oci/config
+          echo "==> Config preview (masked):"
+          echo "user length:    ${#OCI_USER_OCID}"
+          echo "tenancy length: ${#OCI_TENANCY_OCID}"
+          echo "fingerprint:    $OCI_FINGERPRINT"
           echo "==> Testing auth..."
-          oci iam region list --output table
+          OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING=True oci iam region list --output table
 
       - name: Get Ubuntu 22.04 ARM image and Availability Domain
         id: info
