@@ -9,6 +9,7 @@ jobs:
   create-vm:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: secrets
     env:
       SUPPRESS_LABEL_WARNING: "true"
       OCI_CLI_SUPPRESS_FILE_PERMISSIONS_WARNING: "True"
