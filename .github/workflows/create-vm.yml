@@ -75,7 +75,7 @@ jobs:
           OCI_SUBNET_OCID: ${{ secrets.OCI_SUBNET_OCID }}
           OCI_SSH_PUBLIC_KEY: ${{ secrets.OCI_SSH_PUBLIC_KEY }}
         run: |
-          echo "$OCI_SSH_PUBLIC_KEY" > /tmp/ssh_key.pub
+          echo "$OCI_SSH_PUBLIC_KEY" | tr -d '\n\r' > /tmp/ssh_key.pub
           echo '{"ocpus": 4, "memoryInGBs": 24}' > /tmp/shape_config.json
 
           OUTPUT=$(oci compute instance launch \
