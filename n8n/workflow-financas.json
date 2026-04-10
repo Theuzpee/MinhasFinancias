@@ -1,0 +1,201 @@
+{
+  "name": "Finanças — Classificar e Alertar",
+  "nodes": [
+    {
+      "id": "1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "financas",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "2",
+      "name": "Gemini — Classificar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [480, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "key", "value": "={{ $env.GEMINI_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "=Analise esta transação financeira e retorne um JSON.\n\nDescrição: {{ $json.body.description }}\nCategoria sugerida: {{ $json.body.category }}\nTipo: {{ $json.body.type }}\nValor: R$ {{ $json.body.amount }}\n\nRegras:\n- Confirme ou corrija a categoria para uma destas: Salário, Freelance, Alimentação, Moradia, Transporte, Saúde, Educação, Lazer, Outros\n- Determine se é gasto ESSENCIAL (necessidade básica: alimentação, moradia, saúde, transporte, educação) ou SUPÉRFLUO (lazer, luxo, entretenimento)\n- Entradas (salário, freelance) são sempre essential: false\n\nResponda APENAS com JSON válido: {\"category\": \"NomeCategoria\", \"essential\": true}"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "3",
+      "name": "Extrair Classificação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [720, 300],
+      "parameters": {
+        "jsCode": "const text = $input.item.json.candidates[0].content.parts[0].text;\nlet category = $('Webhook').item.json.body.category || 'Outros';\nlet essential = false;\ntry {\n  const cleaned = text.replace(/```json|```/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n  category = parsed.category || category;\n  essential = parsed.essential === true;\n} catch(e) {}\n\nconst body = $('Webhook').item.json.body;\nreturn [{ json: {\n  transaction_id: body.transaction_id,\n  user_id: body.user_id,\n  amount: parseFloat(body.amount),\n  type: body.type,\n  category,\n  essential\n}}];"
+      }
+    },
+    {
+      "id": "4",
+      "name": "Atualizar Transação",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [960, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE transactions SET category = '{{ $json.category }}', essential = {{ $json.essential }} WHERE id = '{{ $json.transaction_id }}'",
+        "options": {}
+      }
+    },
+    {
+      "id": "5",
+      "name": "Calcular Totais do Mês",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1200, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT\n  COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as renda,\n  COALESCE(SUM(CASE WHEN type = 'expense' AND essential = true THEN amount ELSE 0 END), 0) as gastos_essenciais,\n  COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_gastos\nFROM transactions\nWHERE user_id = '{{ $('Extrair Classificação').item.json.user_id }}'\nAND date_trunc('month', date::date) = date_trunc('month', CURRENT_DATE)",
+        "options": {}
+      }
+    },
+    {
+      "id": "6",
+      "name": "Buscar Perfil",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2,
+      "position": [1440, 300],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT monthly_limit, whatsapp FROM profiles WHERE id = '{{ $('Extrair Classificação').item.json.user_id }}'",
+        "options": {}
+      }
+    },
+    {
+      "id": "7",
+      "name": "Montar Resposta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1680, 300],
+      "parameters": {
+        "jsCode": "const totais = $('Calcular Totais do Mês').item.json;\nconst perfil = $('Buscar Perfil').item.json;\nconst classif = $('Extrair Classificação').item.json;\n\nconst renda = parseFloat(totais.renda);\nconst gastos_essenciais = parseFloat(totais.gastos_essenciais);\nconst total_gastos = parseFloat(totais.total_gastos);\nconst saldo_restante = renda - total_gastos;\nconst percentual_gasto = renda > 0 ? Math.round((total_gastos / renda) * 100) : 0;\nconst monthly_limit = parseFloat(perfil.monthly_limit) || 0;\nconst limite_percentual = monthly_limit > 0 ? monthly_limit : renda * 0.8;\n\nreturn [{ json: {\n  renda,\n  gastos_essenciais,\n  total_gastos,\n  saldo_restante,\n  percentual_gasto,\n  category: classif.category,\n  essential: classif.essential,\n  alerta: total_gastos >= limite_percentual && perfil.whatsapp,\n  whatsapp: perfil.whatsapp,\n  monthly_limit: limite_percentual\n}}];"
+      }
+    },
+    {
+      "id": "8",
+      "name": "Responder ao Frontend",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1920, 180],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, category: $json.category, essential: $json.essential, renda: $json.renda, gastos_essenciais: $json.gastos_essenciais, total_gastos: $json.total_gastos, saldo_restante: $json.saldo_restante, percentual_gasto: $json.percentual_gasto }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "9",
+      "name": "Limite Atingido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1920, 420],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "cond1",
+              "leftValue": "={{ $json.alerta }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "10",
+      "name": "Montar Alerta WhatsApp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2160, 340],
+      "parameters": {
+        "jsCode": "const d = $input.item.json;\nconst mes = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });\nconst fmt = v => `R$ ${parseFloat(v).toFixed(2).replace('.', ',')}` ;\n\nconst msg = `⚠️ *Alerta Finanças Pessoais*\\n\\nVocê já gastou *${fmt(d.total_gastos)}* de *${fmt(d.renda)}* (${d.percentual_gasto}%)\\n\\n💰 Gastos essenciais: *${fmt(d.gastos_essenciais)}*\\n💳 Saldo restante: *${fmt(d.saldo_restante)}*\\n\\nCuidado com os gastos este mês! 💪`;\n\nreturn [{ json: { whatsapp: d.whatsapp, message: msg } }];"
+      }
+    },
+    {
+      "id": "11",
+      "name": "Enviar WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2400, 340],
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8081/message/sendText/financas",
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "number": "={{ $json.whatsapp }}",
+          "text": "={{ $json.message }}"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Gemini — Classificar", "type": "main", "index": 0 }]]
+    },
+    "Gemini — Classificar": {
+      "main": [[{ "node": "Extrair Classificação", "type": "main", "index": 0 }]]
+    },
+    "Extrair Classificação": {
+      "main": [[{ "node": "Atualizar Transação", "type": "main", "index": 0 }]]
+    },
+    "Atualizar Transação": {
+      "main": [[{ "node": "Calcular Totais do Mês", "type": "main", "index": 0 }]]
+    },
+    "Calcular Totais do Mês": {
+      "main": [[{ "node": "Buscar Perfil", "type": "main", "index": 0 }]]
+    },
+    "Buscar Perfil": {
+      "main": [[{ "node": "Montar Resposta", "type": "main", "index": 0 }]]
+    },
+    "Montar Resposta": {
+      "main": [
+        [{ "node": "Responder ao Frontend", "type": "main", "index": 0 }],
+        [{ "node": "Limite Atingido?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Limite Atingido?": {
+      "main": [
+        [{ "node": "Montar Alerta WhatsApp", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Montar Alerta WhatsApp": {
+      "main": [[{ "node": "Enviar WhatsApp", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

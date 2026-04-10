@@ -56,7 +56,16 @@ erDiagram
         numeric amount
         text type
         text category
+        boolean essential
         date date
+        timestamptz created_at
+    }
+
+    profiles {
+        uuid id PK
+        text name
+        text whatsapp
+        numeric monthly_limit
         timestamptz created_at
     }
 
@@ -80,6 +89,7 @@ erDiagram
 
     auth_users ||--o{ transactions : "possui"
     auth_users ||--o{ goals : "possui"
+    auth_users ||--o| profiles : "tem"
     goals ||--o{ goal_progress : "registra"
 ```
 
@@ -104,11 +114,13 @@ erDiagram
 ## Funcionalidades
 
 - Cadastro e login com email/senha
+- Campo de WhatsApp no cadastro para alertas automáticos
 - Dados isolados por usuário (Row Level Security)
-- Painel com cards de Renda, Gastos e Saldo do mês
+- Painel com cards de Renda, Gastos Essenciais e Saldo do mês
+- Classificação automática de categoria e essencialidade via Gemini
 - Histórico de transações com filtro por mês
-- Metas financeiras com termômetro de progresso
-- Histórico de aportes mensais por meta
+- Metas financeiras com termômetro de progresso e histórico mensal
+- Limite mensal configurável com alerta via WhatsApp
 - Dark mode / Light mode
 
 ---

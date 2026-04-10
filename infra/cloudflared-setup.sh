@@ -8,7 +8,8 @@
 set -euo pipefail
 
 # ─── Configuration ────────────────────────────────────────────────────────────
-DOMAIN="yourdomain.com"          # Change this to your actual domain
+DOMAIN="myfinancias.duckdns.org"
+API_DOMAIN="myfinancias-api.duckdns.org"
 # ──────────────────────────────────────────────────────────────────────────────
 
 ARCH="$(uname -m)"
@@ -35,9 +36,9 @@ tunnel: <TUNNEL_ID>
 credentials-file: /root/.cloudflared/<TUNNEL_ID>.json
 
 ingress:
-  - hostname: api.${DOMAIN}
+  - hostname: ${API_DOMAIN}
     service: http://localhost:5678
-  - hostname: app.${DOMAIN}
+  - hostname: ${DOMAIN}
     service: http://localhost:8080
   - service: http_status:404
 EOF

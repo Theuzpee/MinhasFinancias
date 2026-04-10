@@ -4,8 +4,8 @@
       "command": "npx",
       "args": ["-y", "n8n-mcp"],
       "env": {
-        "N8N_API_URL": "http://localhost:5678",
-        "N8N_API_KEY": "sua-api-key-aqui"
+        "N8N_API_URL": "http://137.131.238.158:5678",
+        "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzYmNkZjlmMS03NWE3LTRlMTMtYTRhNS1kZTEyYjRjNjI3NDgiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYzQ0M2JlNDQtMDMyYy00Yjc0LWEzYzgtNzZjNDBjNmQ0Y2QxIiwiaWF0IjoxNzc1ODU5MzgzfQ.JvnxlvX7qziKM9MPHAAgiHixRlwtQDRCnACRnfM9TAs"
       },
       "disabled": false,
       "autoApprove": []

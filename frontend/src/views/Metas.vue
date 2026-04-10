@@ -6,6 +6,18 @@
         <h2 class="page-title">Minhas <em>Metas</em></h2>
         <p class="page-sub">Acompanhe seu progresso mês a mês</p>
       </div>
+      <div class="limit-box" v-if="profile">
+        <label for="monthlyLimit">Limite mensal de gastos</label>
+        <div class="limit-input-row">
+          <span class="limit-prefix">R$</span>
+          <input id="monthlyLimit" v-model="limitInput" type="number" min="0" step="0.01"
+                 placeholder="Ex: 3000" @blur="saveLimit" />
+          <button class="btn-save-limit" @click="saveLimit" :disabled="savingLimit">
+            {{ savingLimit ? '...' : 'Salvar' }}
+          </button>
+        </div>
+        <span class="limit-hint">Usado para alertas de WhatsApp (padrão: 80% da renda)</span>
+      </div>
     </div>
 
     <div class="panel">
@@ -142,6 +154,9 @@ const loading = ref(true)
 const saving = ref(false)
 const formError = ref('')
 const progressInputs = ref({})
+const profile = ref(null)
+const limitInput = ref('')
+const savingLimit = ref(false)
 
 const form = ref({
   name: '',
@@ -156,7 +171,26 @@ function nextMonth() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
-onMounted(fetchMetas)
+onMounted(async () => {
+  await fetchProfile()
+  await fetchMetas()
+})
+
+async function fetchProfile() {
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data } = await supabase.from('profiles').select('monthly_limit').eq('id', user.id).single()
+  profile.value = data
+  limitInput.value = data?.monthly_limit || ''
+}
+
+async function saveLimit() {
+  if (!limitInput.value) return
+  savingLimit.value = true
+  const { data: { user } } = await supabase.auth.getUser()
+  await supabase.from('profiles').upsert({ id: user.id, monthly_limit: parseFloat(limitInput.value) })
+  savingLimit.value = false
+  profile.value = { ...profile.value, monthly_limit: parseFloat(limitInput.value) }
+}
 
 async function fetchMetas() {
   loading.value = true
@@ -247,7 +281,12 @@ function fmt(val) {
 
 <style scoped>
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
   margin-bottom: 1.75rem;
+  gap: 1.5rem;
+  flex-wrap: wrap;
 }
 .page-title {
   font-family: var(--font-body);
@@ -261,6 +300,59 @@ function fmt(val) {
   font-size: 1.6rem;
 }
 .page-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+.limit-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 260px;
+}
+.limit-box label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.limit-input-row {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.limit-input-row:focus-within { border-color: var(--gold); }
+.limit-prefix {
+  padding: 0.6rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border-right: 1px solid var(--border);
+}
+.limit-input-row input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 0.6rem 0.75rem;
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+.limit-input-row input:focus { box-shadow: none; }
+.btn-save-limit {
+  background: var(--gold-dim);
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--gold);
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+.btn-save-limit:hover { background: var(--gold); color: #0c0a09; }
+.limit-hint { font-size: 0.7rem; color: var(--text-dim); }
 
 .metas-grid {
   display: grid;

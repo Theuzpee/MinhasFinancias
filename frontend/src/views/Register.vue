@@ -17,6 +17,14 @@
           <input id="email" v-model="email" type="email" placeholder="seu@email.com" required autocomplete="email" />
         </div>
         <div class="form-group">
+          <label for="whatsapp">WhatsApp <span class="optional">(para alertas)</span></label>
+          <div class="input-flag">
+            <span class="flag">🇧🇷 +55</span>
+            <input id="whatsapp" v-model="whatsapp" type="tel"
+                   placeholder="11999999999" autocomplete="tel" />
+          </div>
+        </div>
+        <div class="form-group">
           <label for="password">Senha</label>
           <div class="input-eye">
             <input id="password" v-model="password" :type="showPassword ? 'text' : 'password'"
@@ -66,6 +74,7 @@ import { supabase } from '../supabase'
 
 const name = ref('')
 const email = ref('')
+const whatsapp = ref('')
 const password = ref('')
 const confirm = ref('')
 const showPassword = ref(false)
@@ -85,7 +94,7 @@ async function register() {
   const { error: err } = await supabase.auth.signUp({
     email: email.value,
     password: password.value,
-    options: { data: { name: name.value } },
+    options: { data: { name: name.value, whatsapp: whatsapp.value ? `+55${whatsapp.value.replace(/\D/g,'')}` : '' } },
   })
   loading.value = false
   if (err) { error.value = err.message; return }
@@ -162,6 +171,36 @@ form { display: flex; flex-direction: column; gap: 1rem; }
   align-items: center;
   gap: 0.5rem;
 }
+
+.optional { font-weight: 400; color: var(--text-muted); font-size: 0.7rem; }
+
+.input-flag {
+  display: flex;
+  align-items: center;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 0.2s;
+}
+.input-flag:focus-within { border-color: var(--gold); }
+
+.flag {
+  padding: 0.65rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  background: var(--surface3);
+}
+
+.input-flag input {
+  border: none;
+  background: transparent;
+  flex: 1;
+  padding: 0.65rem 0.75rem;
+}
+.input-flag input:focus { box-shadow: none; }
 
 .switch {
   text-align: center;

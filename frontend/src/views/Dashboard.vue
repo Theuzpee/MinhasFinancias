@@ -147,6 +147,7 @@ const loading = ref(true)
 const saving = ref(false)
 const formError = ref('')
 const selectedMonth = ref('')
+const n8nTotals = ref(null)
 
 const form = ref({
   desc: '',
@@ -172,9 +173,9 @@ const filtered = computed(() =>
     .sort((a, b) => b.date.localeCompare(a.date))
 )
 
-const totalIncome  = computed(() => filtered.value.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0))
-const totalExpense = computed(() => filtered.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0))
-const balance      = computed(() => totalIncome.value - totalExpense.value)
+const totalIncome  = computed(() => n8nTotals.value?.renda ?? filtered.value.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0))
+const totalExpense = computed(() => n8nTotals.value?.gastos_essenciais ?? filtered.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0))
+const balance      = computed(() => n8nTotals.value?.saldo_restante ?? (totalIncome.value - filtered.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)))
 const incomeCount  = computed(() => filtered.value.filter(t => t.type === 'income').length)
 const expenseCount = computed(() => filtered.value.filter(t => t.type === 'expense').length)
 
@@ -185,6 +186,7 @@ onMounted(async () => {
 
 async function fetchTransactions() {
   loading.value = true
+  n8nTotals.value = null
   const { data } = await supabase.from('transactions').select('*').order('date', { ascending: false })
   transactions.value = data || []
   loading.value = false
@@ -198,16 +200,49 @@ async function addTransaction() {
   }
   saving.value = true
   const { data: { user } } = await supabase.auth.getUser()
-  const { error } = await supabase.from('transactions').insert({
+  const { data, error } = await supabase.from('transactions').insert({
     user_id: user.id,
     description: form.value.desc,
     amount: parseFloat(form.value.amount),
     type: form.value.type,
     category: form.value.category,
     date: form.value.date,
-  })
+  }).select('id')
   saving.value = false
   if (error) { formError.value = error.message; return }
+
+  // Dispara webhook n8n — recebe totais atualizados e atualiza cards em tempo real
+  if (data?.[0]?.id) {
+    try {
+      const res = await fetch(`${import.meta.env.VITE_N8N_URL}/webhook/financas`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-webhook-secret': import.meta.env.VITE_WEBHOOK_SECRET || '',
+        },
+        body: JSON.stringify({
+          transaction_id: data[0].id,
+          user_id: user.id,
+          description: form.value.desc,
+          amount: parseFloat(form.value.amount),
+          type: form.value.type,
+          category: form.value.category,
+        }),
+      })
+      if (res.ok) {
+        const n8n = await res.json()
+        // Atualiza cards com dados em tempo real do n8n
+        if (n8n.success) {
+          n8nTotals.value = {
+            renda: n8n.renda,
+            gastos_essenciais: n8n.gastos_essenciais,
+            saldo_restante: n8n.saldo_restante,
+            percentual_gasto: n8n.percentual_gasto,
+          }
+        }
+      }
+    } catch(e) {} // silencioso — não bloqueia o frontend
+  }
   form.value.desc = ''
   form.value.amount = ''
   form.value.date = new Date().toISOString().slice(0, 10)
