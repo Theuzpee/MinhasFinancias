@@ -210,9 +210,11 @@ async function addTransaction() {
   }).select('id')
   saving.value = false
   if (error) { formError.value = error.message; return }
+  console.log('[n8n] insert data:', data, 'error:', error)
 
   // Dispara webhook n8n — recebe totais atualizados e atualiza cards em tempo real
   if (data?.[0]?.id) {
+    console.log('[n8n] calling webhook with id:', data[0].id)
     try {
       const res = await fetch(`${import.meta.env.VITE_N8N_URL}/webhook/financas`, {
         method: 'POST',
