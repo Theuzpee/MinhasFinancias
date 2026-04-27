@@ -6,6 +6,7 @@ const routes = [
   { path: '/register', component: () => import('./views/Register.vue'), meta: { public: true } },
   { path: '/',         component: () => import('./views/Dashboard.vue') },
   { path: '/metas',    component: () => import('./views/Metas.vue') },
+  { path: '/perfil',   component: () => import('./views/Perfil.vue') },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ]
 
