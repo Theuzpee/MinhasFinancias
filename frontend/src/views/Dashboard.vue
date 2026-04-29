@@ -128,18 +128,23 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="t in filtered" :key="t.id">
-              <td class="td-date">{{ formatDate(t.date) }}</td>
-              <td>{{ t.description }}</td>
-              <td><span class="category-tag">{{ t.category }}</span></td>
-              <td><span :class="`badge badge-pill badge-${t.type}`">{{ t.type === 'income' ? 'Entrada' : 'Saída' }}</span></td>
-              <td :class="`amount amount-${t.type}`">
-                <span class="amount-sign">{{ t.type === 'income' ? '+' : '−' }}</span>{{ fmt(t.amount) }}
-              </td>
-              <td>
-                <button class="btn-remove" @click="remove(t.id)" title="Remover">✕</button>
-              </td>
-            </tr>
+            <template v-for="group in groupedByDate" :key="group.date">
+              <tr class="date-group-row">
+                <td colspan="6" class="date-group-label">{{ formatDate(group.date) }}</td>
+              </tr>
+              <tr v-for="t in group.items" :key="t.id">
+                <td class="td-date">{{ formatDate(t.date) }}</td>
+                <td>{{ t.description }}</td>
+                <td><span class="category-tag">{{ t.category }}</span></td>
+                <td><span :class="`badge badge-pill badge-${t.type}`">{{ t.type === 'income' ? 'Entrada' : 'Saída' }}</span></td>
+                <td :class="`amount amount-${t.type}`">
+                  <span class="amount-sign">{{ t.type === 'income' ? '+' : '−' }}</span>{{ fmt(t.amount) }}
+                </td>
+                <td>
+                  <button class="btn-remove" @click="remove(t.id)" title="Remover">✕</button>
+                </td>
+              </tr>
+            </template>
           </tbody>
         </table>
       </div>
@@ -188,9 +193,20 @@ const filtered = computed(() =>
 const totalIncome  = computed(() => n8nTotals.value?.renda ?? filtered.value.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0))
 const totalExpense = computed(() => n8nTotals.value?.gastos_essenciais ?? filtered.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0))
 const balance      = computed(() => n8nTotals.value?.saldo_restante ?? (totalIncome.value - filtered.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)))
-const incomeCount  = computed(() => filtered.value.filter(t => t.type === 'income').length)
-const expenseCount = computed(() => filtered.value.filter(t => t.type === 'expense').length)
+const incomeCount        = computed(() => filtered.value.filter(t => t.type === 'income').length)
+const expenseCount       = computed(() => filtered.value.filter(t => t.type === 'expense' && t.essential).length)
 
+// Agrupa transações por data para exibição no histórico
+const groupedByDate = computed(() => {
+  const groups = {}
+  filtered.value.forEach(t => {
+    if (!groups[t.date]) groups[t.date] = []
+    groups[t.date].push(t)
+  })
+  return Object.entries(groups)
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, items]) => ({ date, items }))
+})
 onMounted(async () => {
   selectedMonth.value = months.value[0].value
   await fetchTransactions()
@@ -412,7 +428,16 @@ tbody tr:last-child { border-bottom: none; }
 td { padding: 0.875rem 1rem; vertical-align: middle; }
 
 .td-date { font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-muted); white-space: nowrap; }
-.category-tag { font-size: 0.75rem; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); padding: 0.15rem 0.55rem; border-radius: 2rem; }
+
+.date-group-row { background: var(--surface2) !important; }
+.date-group-label {
+  padding: 0.4rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}.category-tag { font-size: 0.75rem; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); padding: 0.15rem 0.55rem; border-radius: 2rem; }
 .badge-pill { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 2rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em; }
 .badge-income  { background: var(--green-dim); color: var(--green); }
 .badge-expense { background: var(--red-dim);   color: var(--red); }
