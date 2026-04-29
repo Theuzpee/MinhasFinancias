@@ -21,7 +21,8 @@
           <div class="input-flag">
             <span class="flag">🇧🇷 +55</span>
             <input id="whatsapp" v-model="whatsapp" type="tel"
-                   placeholder="11999999999" autocomplete="tel" />
+                   placeholder="(11) 99999-9999" autocomplete="tel"
+                   @input="maskWhatsapp" maxlength="15" />
           </div>
         </div>
         <div class="form-group">
@@ -75,6 +76,14 @@ import { supabase } from '../supabase'
 const name = ref('')
 const email = ref('')
 const whatsapp = ref('')
+
+function maskWhatsapp(e) {
+  let v = e.target.value.replace(/\D/g, '').slice(0, 11)
+  if (v.length > 6) v = `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`
+  else if (v.length > 2) v = `(${v.slice(0,2)}) ${v.slice(2)}`
+  else if (v.length > 0) v = `(${v}`
+  whatsapp.value = v
+}
 const password = ref('')
 const confirm = ref('')
 const showPassword = ref(false)
@@ -94,8 +103,7 @@ async function register() {
   const { error: err } = await supabase.auth.signUp({
     email: email.value,
     password: password.value,
-    options: { data: { name: name.value, whatsapp: whatsapp.value ? `+55${whatsapp.value.replace(/\D/g,'')}` : '' } },
-  })
+    options: { data: { name: name.value, whatsapp: whatsapp.value ? `+55${whatsapp.value.replace(/\D/g,'')}` : '' } },  })
   loading.value = false
   if (err) { error.value = err.message; return }
   success.value = 'Conta criada! Verifique seu email para confirmar.'
