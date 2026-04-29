@@ -76,6 +76,13 @@ import { supabase } from '../supabase'
 const name = ref('')
 const email = ref('')
 const whatsapp = ref('')
+const password = ref('')
+const confirm = ref('')
+const showPassword = ref(false)
+const showConfirm = ref(false)
+const error = ref('')
+const success = ref('')
+const loading = ref(false)
 
 function maskWhatsapp(e) {
   let v = e.target.value.replace(/\D/g, '').slice(0, 11)
@@ -84,13 +91,6 @@ function maskWhatsapp(e) {
   else if (v.length > 0) v = `(${v}`
   whatsapp.value = v
 }
-const password = ref('')
-const confirm = ref('')
-const showPassword = ref(false)
-const showConfirm = ref(false)
-const error = ref('')
-const success = ref('')
-const loading = ref(false)
 
 async function register() {
   error.value = ''

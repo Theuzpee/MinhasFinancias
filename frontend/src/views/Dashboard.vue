@@ -157,7 +157,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { supabase } from '../supabase'
 
-document.title = 'Painel — Finanças Pessoais'
+onMounted(() => { document.title = 'Painel — Finanças Pessoais' })
 
 const transactions = ref([])
 const loading = ref(true)
@@ -191,7 +191,7 @@ const filtered = computed(() =>
 )
 
 const totalIncome  = computed(() => n8nTotals.value?.renda ?? filtered.value.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0))
-const totalExpense = computed(() => n8nTotals.value?.gastos_essenciais ?? filtered.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0))
+const totalExpense = computed(() => n8nTotals.value?.gastos_essenciais ?? filtered.value.filter(t => t.type === 'expense' && t.essential).reduce((s, t) => s + t.amount, 0))
 const balance      = computed(() => n8nTotals.value?.saldo_restante ?? (totalIncome.value - filtered.value.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)))
 const incomeCount        = computed(() => filtered.value.filter(t => t.type === 'income').length)
 const expenseCount       = computed(() => filtered.value.filter(t => t.type === 'expense' && t.essential).length)
@@ -293,6 +293,7 @@ async function removeByMonth() {
 async function removeAll() {
   if (!confirm('Apagar TODAS as transações? Esta ação não pode ser desfeita.')) return
   const { data: { user } } = await supabase.auth.getUser()
+  loading.value = true
   await supabase.from('transactions').delete().eq('user_id', user.id)
   await fetchTransactions()
 }
@@ -437,7 +438,8 @@ td { padding: 0.875rem 1rem; vertical-align: middle; }
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-muted);
-}.category-tag { font-size: 0.75rem; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); padding: 0.15rem 0.55rem; border-radius: 2rem; }
+}
+.category-tag { font-size: 0.75rem; color: var(--text-muted); background: var(--surface2); border: 1px solid var(--border); padding: 0.15rem 0.55rem; border-radius: 2rem; }
 .badge-pill { display: inline-block; padding: 0.2rem 0.65rem; border-radius: 2rem; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.03em; }
 .badge-income  { background: var(--green-dim); color: var(--green); }
 .badge-expense { background: var(--red-dim);   color: var(--red); }
