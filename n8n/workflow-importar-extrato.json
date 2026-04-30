@@ -1,0 +1,355 @@
+{
+  "name": "Importar Extrato",
+  "nodes": [
+    {
+      "id": "node1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "importar-extrato",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "node2",
+      "name": "Validar Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300],
+      "parameters": {
+        "jsCode": "const body = $input.item.json.body || {};\nconst requiredFields = ['user_id', 'file_type', 'content'];\n\nfor (const field of requiredFields) {\n  if (!body[field]) {\n    return [{ json: { __error: true, __status: 400, error: `Campo '${field}' ausente` } }];\n  }\n}\n\nreturn [{ json: { ...body, __error: false } }];"
+      }
+    },
+    {
+      "id": "node2b",
+      "name": "Payload Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [720, 300],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "cond-payload-error",
+              "leftValue": "={{ $json.__error }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node3",
+      "name": "Preparar Conteúdo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, 180],
+      "parameters": {
+        "jsCode": "const data = $input.item.json;\nconst { user_id, file_name, file_type, content } = data;\n\nlet prepared_content;\nif (file_type === 'pdf') {\n  prepared_content = Buffer.from(content, 'base64').toString('utf-8');\n} else {\n  prepared_content = content;\n}\n\nreturn [{ json: { user_id, file_name, file_type, prepared_content } }];"
+      }
+    },
+    {
+      "id": "node4",
+      "name": "Gemini — Extrair Transações",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1200, 180],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "key", "value": "={{ $env.GEMINI_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "=Você é um parser de extratos bancários brasileiros.\nAnalise o conteúdo abaixo e extraia TODAS as transações financeiras.\n\nRetorne APENAS um array JSON válido, sem markdown, sem explicações.\nCada item deve ter exatamente estes campos:\n- description: string (descrição da transação)\n- amount: number (valor positivo, sem símbolo de moeda)\n- type: \"income\" ou \"expense\" (crédito = income, débito = expense)\n- date: string no formato \"YYYY-MM-DD\"\n\nSe não houver transações identificáveis, retorne: []\n\nConteúdo do extrato:\n{{ $json.prepared_content }}"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node5",
+      "name": "Parsear Resposta Gemini",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1440, 180],
+      "parameters": {
+        "jsCode": "const text = $input.item.json.candidates[0].content.parts[0].text;\nconst cleaned = text.replace(/```json|```/g, '').trim();\n\nlet parsedArray;\ntry {\n  parsedArray = JSON.parse(cleaned);\n} catch (e) {\n  return [{ json: { __error: true, __status: 422, error: 'Não foi possível interpretar o extrato' } }];\n}\n\nif (!Array.isArray(parsedArray)) {\n  return [{ json: { __error: true, __status: 422, error: 'Não foi possível interpretar o extrato' } }];\n}\n\nconst user_id = $('Preparar Conteúdo').item.json.user_id;\nreturn [{ json: { transactions: parsedArray, user_id, __error: false } }];"
+      }
+    },
+    {
+      "id": "node5b",
+      "name": "Gemini Válido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1680, 180],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "cond-gemini-error",
+              "leftValue": "={{ $json.__error }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node6",
+      "name": "Validar Transações",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1920, 120],
+      "parameters": {
+        "jsCode": "const { transactions, user_id } = $input.item.json;\n\nconst validTransactions = transactions.filter(t => {\n  const amountValid = typeof t.amount === 'number' && t.amount > 0;\n  const typeValid = t.type === 'income' || t.type === 'expense';\n  const dateValid = t.date && !isNaN(new Date(t.date).getTime());\n  return amountValid && typeValid && dateValid;\n});\n\nreturn [{ json: { validTransactions, user_id } }];"
+      }
+    },
+    {
+      "id": "node7",
+      "name": "Tem Transações?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2160, 120],
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "id": "cond-has-transactions",
+              "leftValue": "={{ $json.validTransactions.length }}",
+              "rightValue": 0,
+              "operator": { "type": "number", "operation": "gt" }
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "node8",
+      "name": "Split em Itens",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [2400, 60],
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      }
+    },
+    {
+      "id": "node9",
+      "name": "Gemini — Classificar",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [2640, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "key", "value": "={{ $env.GEMINI_API_KEY }}" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "body": {
+          "contents": [
+            {
+              "parts": [
+                {
+                  "text": "=Analise esta transação financeira e retorne um JSON.\n\nDescrição: {{ $json.description }}\nTipo: {{ $json.type }}\nValor: R$ {{ $json.amount }}\n\nRegras:\n- Confirme ou corrija a categoria para uma destas: Salário, Freelance, Alimentação, Moradia, Transporte, Saúde, Educação, Lazer, Outros\n- Determine se é gasto ESSENCIAL (necessidade básica: alimentação, moradia, saúde, transporte, educação) ou SUPÉRFLUO (lazer, luxo, entretenimento)\n- Entradas (salário, freelance) são sempre essential: false\n\nResponda APENAS com JSON válido: {\"category\": \"NomeCategoria\", \"essential\": true}"
+                }
+              ]
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "node10",
+      "name": "Extrair Classificação",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2880, 60],
+      "parameters": {
+        "jsCode": "const text = $input.item.json.candidates[0].content.parts[0].text;\nlet category = 'Outros';\nlet essential = false;\n\ntry {\n  const cleaned = text.replace(/```json|```/g, '').trim();\n  const parsed = JSON.parse(cleaned);\n  category = parsed.category || 'Outros';\n  essential = parsed.essential === true;\n} catch (e) {}\n\n// Use $input.item.json directly — inside SplitInBatches the current item is the transaction\nconst transaction = $input.item.json;\nconst user_id = $('Validar Transações').item.json.user_id;\n\nreturn [{ json: {\n  user_id,\n  description: transaction.description,\n  amount: transaction.amount,\n  type: transaction.type,\n  date: transaction.date,\n  category,\n  essential\n} }];"
+      }
+    },
+    {
+      "id": "node11",
+      "name": "Agregar Transações",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3120, 60],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const allItems = $input.all();\nconst allTransactions = allItems.map(item => item.json);\n\nreturn [{ json: {\n  transactions: allTransactions,\n  user_id: allTransactions[0]?.user_id\n} }];"
+      }
+    },
+    {
+      "id": "node12",
+      "name": "Inserir no Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [3360, 60],
+      "parameters": {
+        "method": "POST",
+        "url": "https://unzbihwswuwypovleckc.supabase.co/rest/v1/transactions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Authorization", "value": "=Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "rawBody",
+        "body": "={{ JSON.stringify($json.transactions) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "node13",
+      "name": "Responder Sucesso",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [3600, 60],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, imported: Array.isArray($json) ? $json.length : 0 }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "node14",
+      "name": "Responder Zero",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2400, 300],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, imported: 0 }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "node15",
+      "name": "Responder Erro",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [960, 480],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.error || 'Erro interno' }) }}",
+        "options": {
+          "responseCode": "={{ $json.__status || 400 }}"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [{ "node": "Validar Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validar Payload": {
+      "main": [
+        [{ "node": "Payload Válido?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Payload Válido?": {
+      "main": [
+        [{ "node": "Responder Erro", "type": "main", "index": 0 }],
+        [{ "node": "Preparar Conteúdo", "type": "main", "index": 0 }]
+      ]
+    },
+    "Preparar Conteúdo": {
+      "main": [
+        [{ "node": "Gemini — Extrair Transações", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini — Extrair Transações": {
+      "main": [
+        [{ "node": "Parsear Resposta Gemini", "type": "main", "index": 0 }]
+      ]
+    },
+    "Parsear Resposta Gemini": {
+      "main": [
+        [{ "node": "Gemini Válido?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini Válido?": {
+      "main": [
+        [{ "node": "Responder Erro", "type": "main", "index": 0 }],
+        [{ "node": "Validar Transações", "type": "main", "index": 0 }]
+      ]
+    },
+    "Validar Transações": {
+      "main": [
+        [{ "node": "Tem Transações?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Tem Transações?": {
+      "main": [
+        [{ "node": "Split em Itens", "type": "main", "index": 0 }],
+        [{ "node": "Responder Zero", "type": "main", "index": 0 }]
+      ]
+    },
+    "Split em Itens": {
+      "main": [
+        [{ "node": "Gemini — Classificar", "type": "main", "index": 0 }],
+        [{ "node": "Agregar Transações", "type": "main", "index": 0 }]
+      ]
+    },
+    "Gemini — Classificar": {
+      "main": [
+        [{ "node": "Extrair Classificação", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extrair Classificação": {
+      "main": [
+        [{ "node": "Split em Itens", "type": "main", "index": 0 }]
+      ]
+    },
+    "Agregar Transações": {
+      "main": [
+        [{ "node": "Inserir no Supabase", "type": "main", "index": 0 }]
+      ]
+    },
+    "Inserir no Supabase": {
+      "main": [
+        [{ "node": "Responder Sucesso", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}
