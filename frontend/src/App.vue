@@ -8,6 +8,7 @@
       <nav>
         <RouterLink to="/">Painel</RouterLink>
         <RouterLink to="/metas">Metas</RouterLink>
+        <RouterLink to="/importar">Importar</RouterLink>
         <RouterLink to="/perfil">Perfil</RouterLink>
       </nav>
       <div class="header-actions">

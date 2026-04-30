@@ -48,7 +48,7 @@
           <div class="toggle-row">
             <div class="toggle-info">
               <span class="toggle-label">Notificações WhatsApp</span>
-              <span class="toggle-sub">{{ form.notify_whatsapp ? 'Alerta quando atingir o limite' : 'Desativado' }}</span>
+              <span class="toggle-sub">{{ form.notify_whatsapp ? 'Ativo — limite mensal e metas concluídas' : 'Desativado' }}</span>
             </div>
             <button class="toggle-btn" :class="{ active: form.notify_whatsapp }" @click="form.notify_whatsapp = !form.notify_whatsapp">
               <span class="toggle-thumb"></span>
@@ -146,13 +146,13 @@ import { Bar, Doughnut } from 'vue-chartjs'
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, BarElement,
-  ArcElement, Tooltip, Legend, Title, LineElement, PointElement
+  ArcElement, Tooltip, Legend, Title
 } from 'chart.js'
 import { supabase } from '../supabase'
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend, Title, LineElement, PointElement)
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend, Title)
 
-document.title = 'Perfil — Finanças Pessoais'
+onMounted(() => { document.title = 'Perfil — Finanças Pessoais' })
 
 const MONTHS_SHORT = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
 const CATEGORY_COLORS = [
@@ -299,7 +299,7 @@ const barData = computed(() => {
   }
 })
 
-const barOptions = computed(() => ({
+const barOptions = {
   responsive: true,
   maintainAspectRatio: true,
   plugins: {
@@ -314,22 +314,13 @@ const barOptions = computed(() => ({
           return bal !== 0 ? [`Saldo: R$ ${bal.toFixed(2).replace('.',',')}`] : []
         }
       }
-    },
-    annotation: profile.value.monthly_limit > 0 ? {
-      annotations: {
-        limit: {
-          type: 'line', yMin: profile.value.monthly_limit, yMax: profile.value.monthly_limit,
-          borderColor: '#d4a853', borderWidth: 1.5, borderDash: [6, 4],
-          label: { content: `Limite R$ ${profile.value.monthly_limit}`, display: true, color: '#d4a853', font: { size: 11 } }
-        }
-      }
-    } : {}
+    }
   },
   scales: {
     x: { ticks: { color: '#8a7f72', font: { family: 'DM Sans' } }, grid: { color: 'rgba(42,37,32,0.5)' } },
     y: { ticks: { color: '#8a7f72', font: { family: 'DM Sans' }, callback: v => `R$ ${v}` }, grid: { color: 'rgba(42,37,32,0.5)' } }
   }
-}))
+}
 
 function fmt(val) {
   return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
