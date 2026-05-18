@@ -1,39 +1,18 @@
-// Cypress Custom Commands
+// Cypress Custom Commands para E2E Real
 
 /**
- * Comando customizado para realizar o mock de uma sessão autenticada do Supabase.
- * Isso evita a necessidade de repetir os interceptors em todos os arquivos de teste.
+ * Realiza o login real na aplicação através da interface (UI).
+ * Substitua as credenciais pelas de um usuário de teste válido no seu Supabase.
  */
-Cypress.Commands.add('mockSession', (userId = 'u1', email = 'test@mail.com', name = 'Usuário Teste') => {
-  cy.intercept('GET', '**/auth/v1/session*', {
-    statusCode: 200,
-    body: {
-      session: {
-        access_token: 'fake-token',
-        user: { id: userId, email }
-      }
-    }
-  }).as('mockSession')
-
-  cy.intercept('GET', '**/auth/v1/user*', {
-    statusCode: 200,
-    body: {
-      id: userId,
-      aud: 'authenticated',
-      role: 'authenticated',
-      email,
-      app_metadata: { provider: 'email' },
-      user_metadata: { name },
-    }
-  }).as('mockUser')
-})
-
-/**
- * Comando customizado para realizar o mock do estado "Deslogado".
- */
-Cypress.Commands.add('mockLoggedOut', () => {
-  cy.intercept('GET', '**/auth/v1/session*', {
-    statusCode: 200,
-    body: { session: null }
-  }).as('mockLoggedOutSession')
+Cypress.Commands.add('login', (email = 'e2e@teste.com', password = 'SenhaForte123') => {
+  // Limpa o estado local para garantir um login limpo
+  cy.clearLocalStorage()
+  
+  cy.visit('/login')
+  cy.get('input#email').clear().type(email)
+  cy.get('input#password').clear().type(password)
+  cy.get('button[type="submit"]').click()
+  
+  // Aguarda o redirecionamento para o Dashboard confirmando que o login real funcionou
+  cy.url({ timeout: 15000 }).should('eq', Cypress.config().baseUrl + '/')
 })

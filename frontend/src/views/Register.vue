@@ -71,7 +71,10 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { supabase } from '../supabase'
+
+const router = useRouter()
 
 const name = ref('')
 const email = ref('')
@@ -106,7 +109,9 @@ async function register() {
     options: { data: { name: name.value, whatsapp: whatsapp.value ? `+55${whatsapp.value.replace(/\D/g,'')}` : '' } },  })
   loading.value = false
   if (err) { error.value = err.message; return }
-  success.value = 'Conta criada! Verifique seu email para confirmar.'
+  
+  // Sem confirmação de email: redireciona direto para o painel
+  router.push('/')
 }
 </script>
 

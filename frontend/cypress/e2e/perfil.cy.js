@@ -1,22 +1,6 @@
 describe('Fluxo do Meu Perfil', () => {
   beforeEach(() => {
-    cy.mockSession()
-
-    // Mock initial transactions for charts
-    cy.intercept('GET', '**/rest/v1/transactions?select=*&date=gte.*', {
-      statusCode: 200,
-      body: [
-        { id: 't1', type: 'expense', amount: 500, category: 'Alimentação', date: new Date().toISOString() },
-        { id: 't2', type: 'income', amount: 3000, category: 'Salário', date: new Date().toISOString() }
-      ]
-    }).as('fetchTransactions')
-
-    // Mock initial profile
-    cy.intercept('GET', '**/rest/v1/profiles?select=*&id=eq.u1', {
-      statusCode: 200,
-      body: [{ id: 'u1', name: 'Usuário Teste', monthly_limit: 2000, notify_whatsapp: false }]
-    }).as('fetchProfile')
-
+    cy.login()
     cy.visit('/perfil')
   })
 
