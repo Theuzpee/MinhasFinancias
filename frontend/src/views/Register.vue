@@ -131,10 +131,10 @@ async function register() {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 20px 48px rgba(0,0,0,0.25), 0 0 0 1px rgba(212,168,83,0.05);
   position: relative;
   z-index: 1;
-  animation: fadeUp 0.5s ease both;
+  animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 .auth-brand {
@@ -219,9 +219,15 @@ form { display: flex; flex-direction: column; gap: 1rem; }
 .switch a:hover { text-decoration: underline; }
 
 .auth-deco { position: absolute; inset: 0; pointer-events: none; }
-.deco-ring { position: absolute; border-radius: 50%; border: 1px solid var(--border); }
-.deco-ring-1 { width: 500px; height: 500px; top: -200px; right: -200px; opacity: 0.4; }
-.deco-ring-2 { width: 350px; height: 350px; bottom: -150px; left: -100px; opacity: 0.25; }
+.deco-ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid var(--gold);
+  filter: blur(2px);
+  animation: pulse 8s infinite alternate ease-in-out;
+}
+.deco-ring-1 { width: 500px; height: 500px; top: -200px; right: -200px; opacity: 0.08; animation-delay: 0s; }
+.deco-ring-2 { width: 350px; height: 350px; bottom: -150px; left: -100px; opacity: 0.06; animation-delay: -3s; }
 
 .spinner {
   display: inline-block;
@@ -234,7 +240,11 @@ form { display: flex; flex-direction: column; gap: 1rem; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(16px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pulse {
+  0% { transform: scale(1) translate(0, 0); opacity: 0.04; }
+  100% { transform: scale(1.05) translate(10px, -10px); opacity: 0.12; }
 }
 </style>
