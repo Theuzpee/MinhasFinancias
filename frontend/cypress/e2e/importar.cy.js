@@ -1,9 +1,7 @@
 describe('Fluxo de Importação de Extratos', () => {
   beforeEach(() => {
-    // Utiliza o custom command para realizar o mock da sessão do usuário
-    cy.mockSession('test-user-id', 'teste@exemplo.com', 'Usuário Teste')
-
-    // Visitar a rota de importação
+    // Utiliza o custom command para login real na interface
+    cy.login()
     cy.visit('/importar')
   })
 

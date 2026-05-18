@@ -1,12 +1,6 @@
 describe('Fluxo de Minhas Metas', () => {
   beforeEach(() => {
-    cy.mockSession()
-
-    cy.intercept('GET', '**/rest/v1/goals?select=*', {
-      statusCode: 200,
-      body: []
-    }).as('fetchEmptyGoals')
-
+    cy.login()
     cy.visit('/metas')
   })
 

@@ -1,14 +1,7 @@
 describe('Fluxo do Dashboard Financeiro', () => {
   beforeEach(() => {
-    // Autenticação Global para as rotas protegidas
-    cy.mockSession()
-
-    // Mock das transações (simulando um histórico vazio no começo)
-    cy.intercept('GET', '**/rest/v1/transactions?select=*&date=gte.*', {
-      statusCode: 200,
-      body: []
-    }).as('fetchEmptyTransactions')
-
+    // Autenticação Real para as rotas protegidas
+    cy.login()
     cy.visit('/')
   })
 
