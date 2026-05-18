@@ -9,7 +9,7 @@
       <div class="header-actions">
         <div class="month-selector">
           <label for="monthSelect">Período</label>
-          <select id="monthSelect" v-model="selectedMonth">
+          <select id="monthSelect" v-model="selectedMonth" @change="fetchTransactions">
             <option v-for="m in months" :key="m.value" :value="m.value">{{ m.label }}</option>
           </select>
         </div>
@@ -63,7 +63,7 @@
       <div class="form-row">
         <div class="form-group">
           <label for="desc">Descrição</label>
-          <input id="desc" v-model="form.desc" type="text" placeholder="Ex: Supermercado" />
+          <input id="desc" v-model="form.desc" type="text" placeholder="Ex: Supermercado" maxlength="255" />
         </div>
         <div class="form-group">
           <label for="amount">Valor (R$)</label>
@@ -184,11 +184,8 @@ const months = computed(() => {
   })
 })
 
-const filtered = computed(() =>
-  [...transactions.value]
-    .filter(t => t.date.startsWith(selectedMonth.value))
-    .sort((a, b) => b.date.localeCompare(a.date))
-)
+// Filtered agora apenas repassa as transações (já que a filtragem ocorre no BD)
+const filtered = computed(() => transactions.value)
 
 const totalIncome  = computed(() => n8nTotals.value?.renda ?? filtered.value.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0))
 const totalExpense = computed(() => n8nTotals.value?.gastos_essenciais ?? filtered.value.filter(t => t.type === 'expense' && t.essential).reduce((s, t) => s + t.amount, 0))
@@ -215,29 +212,62 @@ onMounted(async () => {
 async function fetchTransactions() {
   loading.value = true
   n8nTotals.value = null
-  const { data } = await supabase.from('transactions').select('*').order('date', { ascending: false })
+
+  // Otimização: buscar apenas as transações do mês selecionado
+  const [year, month] = selectedMonth.value.split('-')
+  const startDate = `${selectedMonth.value}-01`
+  // O dia 0 no Date JS retorna o último dia do mês anterior, então usamos mês atual sem subtrair 1
+  const endDate = new Date(year, month, 0).toISOString().slice(0, 10)
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .order('date', { ascending: false })
+  if (error) {
+    formError.value = 'Erro ao carregar transações.'
+    console.error('fetchTransactions:', error)
+  }
   transactions.value = data || []
   loading.value = false
 }
 
+// Debounce para evitar cliques duplos
+let _addLock = false
 async function addTransaction() {
+  if (_addLock) return
+  _addLock = true
+  setTimeout(() => { _addLock = false }, 2000)
+
   formError.value = ''
   if (!form.value.desc || !form.value.amount || !form.value.date) {
     formError.value = 'Preencha descrição, valor e data.'
+    _addLock = false
+    return
+  }
+  if (parseFloat(form.value.amount) <= 0) {
+    formError.value = 'O valor deve ser maior que zero.'
+    _addLock = false
+    return
+  }
+  if (form.value.desc.length > 255) {
+    formError.value = 'Descrição muito longa (máx. 255 caracteres).'
+    _addLock = false
     return
   }
   saving.value = true
   const { data: { user } } = await supabase.auth.getUser()
   const { data, error } = await supabase.from('transactions').insert({
     user_id: user.id,
-    description: form.value.desc,
+    description: form.value.desc.trim(),
     amount: parseFloat(form.value.amount),
     type: form.value.type,
     category: form.value.category,
     date: form.value.date,
   }).select('id')
   saving.value = false
-  if (error) { formError.value = error.message; return }
+  if (error) { formError.value = 'Erro ao salvar transação. Tente novamente.'; _addLock = false; return }
 
   if (data?.[0]?.id) {
     try {
@@ -250,7 +280,7 @@ async function addTransaction() {
         body: JSON.stringify({
           transaction_id: data[0].id,
           user_id: user.id,
-          description: form.value.desc,
+          description: form.value.desc.trim(),
           amount: parseFloat(form.value.amount),
           type: form.value.type,
           category: form.value.category,
@@ -267,34 +297,42 @@ async function addTransaction() {
           }
         }
       }
-    } catch(e) {}
+    } catch(e) {
+      console.warn('n8n webhook indisponível:', e)
+    }
   }
   form.value.desc = ''
   form.value.amount = ''
   form.value.date = new Date().toISOString().slice(0, 10)
+  _addLock = false
   await fetchTransactions()
 }
 
 async function remove(id) {
   if (!confirm('Remover esta transação?')) return
-  await supabase.from('transactions').delete().eq('id', id)
+  const { error } = await supabase.from('transactions').delete().eq('id', id)
+  if (error) { formError.value = 'Erro ao remover transação.'; return }
   await fetchTransactions()
 }
 
 async function removeByMonth() {
   const label = months.value.find(m => m.value === selectedMonth.value)?.label || selectedMonth.value
   if (!confirm(`Apagar todas as transações de ${label}?`)) return
+  if (!confirm(`Confirmar: apagar ${filtered.value.length} transações de ${label}? Esta ação não pode ser desfeita.`)) return
   const ids = filtered.value.map(t => t.id)
   if (!ids.length) return
-  await supabase.from('transactions').delete().in('id', ids)
+  const { error } = await supabase.from('transactions').delete().in('id', ids)
+  if (error) { formError.value = 'Erro ao remover transações.'; return }
   await fetchTransactions()
 }
 
 async function removeAll() {
   if (!confirm('Apagar TODAS as transações? Esta ação não pode ser desfeita.')) return
+  if (!confirm(`Confirmar: apagar ${transactions.value.length} transações permanentemente?`)) return
   const { data: { user } } = await supabase.auth.getUser()
   loading.value = true
-  await supabase.from('transactions').delete().eq('user_id', user.id)
+  const { error } = await supabase.from('transactions').delete().eq('user_id', user.id)
+  if (error) { formError.value = 'Erro ao remover transações.'; loading.value = false; return }
   await fetchTransactions()
 }
 
@@ -391,9 +429,14 @@ function formatDate(str) {
   padding: 1.5rem 1.75rem;
   position: relative;
   overflow: hidden;
-  transition: border-color 0.2s, transform 0.2s;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
-.card:hover { transform: translateY(-2px); }
+.card:hover { 
+  transform: translateY(-4px); 
+  box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+  border-color: rgba(212,168,83,0.3);
+}
 
 .card-income  { border-color: rgba(111,207,151,0.2); }
 .card-expense { border-color: rgba(235,107,107,0.2); }

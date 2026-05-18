@@ -43,7 +43,7 @@
           </div>
           <div class="form-group">
             <label for="profileLimit">Limite mensal (R$)</label>
-            <input id="profileLimit" v-model="form.monthly_limit" type="number" min="0" step="0.01" placeholder="Ex: 3000" />
+            <input id="profileLimit" v-model="form.monthly_limit" type="number" min="0" max="999999" step="0.01" placeholder="Ex: 3000" />
           </div>
           <div class="toggle-row">
             <div class="toggle-info">
@@ -171,8 +171,11 @@ const form = ref({ name: '', monthly_limit: '', notify_whatsapp: false })
 onMounted(async () => {
   const { data: { user } } = await supabase.auth.getUser()
   userEmail.value = user?.email || ''
+  const now = new Date()
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString().slice(0, 10)
+
   const [{ data: tx }, { data: prof }] = await Promise.all([
-    supabase.from('transactions').select('*').order('date', { ascending: false }),
+    supabase.from('transactions').select('*').gte('date', sixMonthsAgo).order('date', { ascending: false }),
     supabase.from('profiles').select('*').eq('id', user.id).single()
   ])
   transactions.value = tx || []
@@ -186,10 +189,16 @@ onMounted(async () => {
 async function saveProfile() {
   saving.value = true
   saveMsg.value = ''
+  const limit = parseFloat(form.value.monthly_limit)
+  if (form.value.monthly_limit !== '' && (isNaN(limit) || limit < 0 || limit > 999999)) {
+    saveMsg.value = '❌ Limite inválido (entre R$ 0 e R$ 999.999)'
+    saving.value = false
+    return
+  }
   const { data: { user } } = await supabase.auth.getUser()
   const { error } = await supabase.from('profiles').upsert({
     id: user.id, name: form.value.name,
-    monthly_limit: parseFloat(form.value.monthly_limit) || 0,
+    monthly_limit: limit || 0,
     notify_whatsapp: form.value.notify_whatsapp,
   })
   saving.value = false
@@ -343,7 +352,18 @@ function fmt(val) {
 @media (max-width: 768px) { .top-grid { grid-template-columns: 1fr; } }
 
 /* Profile card */
-.profile-card { display: flex; flex-direction: column; align-items: center; gap: 1rem; text-align: center; }
+.profile-card { 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  gap: 1rem; 
+  text-align: center; 
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.profile-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+}
 .avatar { width: 72px; height: 72px; border-radius: 50%; background: var(--gold-dim); border: 2px solid var(--gold); color: var(--gold); font-family: var(--font-display); font-size: 1.6rem; display: flex; align-items: center; justify-content: center; }
 .profile-name { font-weight: 600; font-size: 1.1rem; }
 .profile-email { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem; }
@@ -389,7 +409,20 @@ function fmt(val) {
 
 /* Insights */
 .insights-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
-.insight-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.35rem; padding: 1.25rem; }
+.insight-card { 
+  display: flex; 
+  flex-direction: column; 
+  align-items: center; 
+  text-align: center; 
+  gap: 0.35rem; 
+  padding: 1.25rem; 
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.insight-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+  border-color: rgba(212,168,83,0.3);
+}
 .insight-icon { font-size: 1.5rem; }
 .insight-label { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .insight-value { font-family: var(--font-mono); font-size: 1.3rem; font-weight: 600; color: var(--text); }

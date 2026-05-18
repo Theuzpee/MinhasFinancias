@@ -171,17 +171,22 @@ async function addMeta() {
     formError.value = 'Preencha todos os campos.'
     return
   }
+  const target = parseFloat(form.value.target)
+  if (isNaN(target) || target <= 0 || target > 9999999) {
+    formError.value = 'Valor alvo inválido.'
+    return
+  }
   saving.value = true
   const { data: { user } } = await supabase.auth.getUser()
   const { error } = await supabase.from('goals').insert({
     user_id: user.id,
-    name: form.value.name,
-    target: parseFloat(form.value.target),
+    name: form.value.name.trim(),
+    target,
     category: form.value.category,
     deadline: form.value.deadline,
   })
   saving.value = false
-  if (error) { formError.value = error.message; return }
+  if (error) { formError.value = 'Erro ao criar meta. Tente novamente.'; return }
   form.value.name = ''
   form.value.target = ''
   await fetchMetas()
@@ -219,8 +224,9 @@ async function addProgress(meta) {
 }
 
 async function deleteMeta(id) {
-  if (!confirm('Remover esta meta?')) return
-  await supabase.from('goals').delete().eq('id', id)
+  if (!confirm('Remover esta meta e todo o histórico de progresso?')) return
+  const { error } = await supabase.from('goals').delete().eq('id', id)
+  if (error) { formError.value = 'Erro ao remover meta.'; return }
   await fetchMetas()
 }
 
@@ -302,9 +308,14 @@ function fmt(val) {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
-  transition: border-color 0.2s, transform 0.2s;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
-.meta-card:hover { transform: translateY(-2px); }
+.meta-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+  border-color: rgba(212,168,83,0.3);
+}
 
 .meta-card-header {
   display: flex;

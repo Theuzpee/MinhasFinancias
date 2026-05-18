@@ -62,8 +62,12 @@
       "typeVersion": 2,
       "position": [960, 300],
       "parameters": {
-        "operation": "executeQuery",
-        "query": "=UPDATE transactions SET category = '{{ $json.category }}', essential = {{ $json.essential }} WHERE id = '{{ $json.transaction_id }}'",
+        "operation": "update",
+        "schema": "public",
+        "table": "transactions",
+        "columns": "category, essential",
+        "updateKey": "id",
+        "additionalFields": {},
         "options": {}
       }
     },
@@ -75,7 +79,10 @@
       "position": [1200, 300],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT\n  COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as renda,\n  COALESCE(SUM(CASE WHEN type = 'expense' AND essential = true THEN amount ELSE 0 END), 0) as gastos_essenciais,\n  COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_gastos\nFROM transactions\nWHERE user_id = '{{ $('Extrair Classificação').item.json.user_id }}'\nAND date_trunc('month', date::date) = date_trunc('month', CURRENT_DATE)",
+        "query": "SELECT\n  COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0) as renda,\n  COALESCE(SUM(CASE WHEN type = 'expense' AND essential = true THEN amount ELSE 0 END), 0) as gastos_essenciais,\n  COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) as total_gastos\nFROM transactions\nWHERE user_id = $1\nAND date_trunc('month', date::date) = date_trunc('month', CURRENT_DATE)",
+        "additionalFields": {
+          "queryParams": "={{ $('Extrair Classificação').item.json.user_id }}"
+        },
         "options": {}
       }
     },
@@ -87,7 +94,10 @@
       "position": [1440, 300],
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT monthly_limit, whatsapp FROM profiles WHERE id = '{{ $('Extrair Classificação').item.json.user_id }}'",
+        "query": "SELECT monthly_limit, whatsapp FROM profiles WHERE id = $1",
+        "additionalFields": {
+          "queryParams": "={{ $('Extrair Classificação').item.json.user_id }}"
+        },
         "options": {}
       }
     },

@@ -156,6 +156,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { supabase } from '../supabase'
+import { validateFileLogic, buildPayload, encodeFileContent } from '../utils/importarUtils'
 
 onMounted(() => { document.title = 'Importar Extrato — Finanças Pessoais' })
 
@@ -200,17 +201,9 @@ function onFileSelect(e) {
 // --- File validation ---
 
 function validateFile(f) {
-  const MAX_SIZE = 10 * 1024 * 1024 // 10 MB in bytes (10.485.760)
-  const ext = f.name.split('.').pop().toLowerCase()
-
-  if (ext !== 'csv' && ext !== 'pdf') {
-    validationError.value = 'Formato inválido. Apenas arquivos .csv e .pdf são aceitos.'
-    file.value = null
-    return
-  }
-
-  if (f.size > MAX_SIZE) {
-    validationError.value = 'Arquivo muito grande. O tamanho máximo é 10 MB.'
+  const result = validateFileLogic(f)
+  if (!result.valid) {
+    validationError.value = result.error
     file.value = null
     return
   }
@@ -247,17 +240,9 @@ async function sendFile() {
   try {
     // Read file content using FileReader wrapped in a Promise
     const ext = file.value.name.split('.').pop().toLowerCase()
-    const content = await new Promise((resolve, reject) => {
+    const rawContent = await new Promise((resolve, reject) => {
       const reader = new FileReader()
-      reader.onload = () => {
-        if (ext === 'pdf') {
-          // readAsDataURL produces "data:<mime>;base64,<data>" — extract Base64 part
-          resolve(reader.result.split(',')[1])
-        } else {
-          // readAsText produces the raw UTF-8 string
-          resolve(reader.result)
-        }
-      }
+      reader.onload = () => resolve(reader.result)
       reader.onerror = () => reject(reader.error)
       if (ext === 'pdf') {
         reader.readAsDataURL(file.value)
@@ -265,6 +250,8 @@ async function sendFile() {
         reader.readAsText(file.value, 'UTF-8')
       }
     })
+
+    const content = encodeFileContent(file.value.name, rawContent)
 
     // Obtain authenticated user_id
     const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -275,12 +262,7 @@ async function sendFile() {
     }
 
     // Build payload
-    const payload = {
-      user_id: user?.id,
-      file_name: file.value.name,
-      file_type: ext, // 'csv' or 'pdf'
-      content,
-    }
+    const payload = buildPayload(user?.id, file.value.name, ext, content)
 
     // Send to n8n webhook
     const res = await fetch(
@@ -433,8 +415,10 @@ async function sendFile() {
 
 .upload-area.dragging {
   border-color: var(--gold);
-  background: rgba(212, 168, 83, 0.08);
+  background: rgba(212, 168, 83, 0.12);
   border-style: solid;
+  transform: scale(1.01);
+  box-shadow: 0 8px 24px rgba(212, 168, 83, 0.15);
 }
 
 .file-input-hidden {
@@ -542,7 +526,40 @@ async function sendFile() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem;
+}
+
+.loading-dots {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.loading-dots span {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  background-color: var(--gold);
+  border-radius: 50%;
+  animation: loadingDots 1.4s infinite ease-in-out both;
+}
+
+.loading-dots span:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.loading-dots span:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes loadingDots {
+  0%, 80%, 100% { 
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  40% { 
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .result-loading-text {
