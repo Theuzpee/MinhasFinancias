@@ -155,8 +155,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { supabase } from '../supabase'
 import { validateFileLogic, buildPayload, encodeFileContent } from '../utils/importarUtils'
+
+const router = useRouter()
 
 onMounted(() => { document.title = 'Importar Extrato — Finanças Pessoais' })
 
@@ -279,8 +282,16 @@ async function sendFile() {
 
     if (res.ok) {
       const data = await res.json()
-      importedCount.value = data.imported
+      importedCount.value = data.imported ?? 0
       status.value = 'success'
+
+      // Redirecionar para o painel no mês correto da importação
+      if (data.firstDate) {
+        const mes = data.firstDate.slice(0, 7) // YYYY-MM
+        setTimeout(() => router.push(`/?mes=${mes}`), 1500)
+      } else {
+        setTimeout(() => router.push('/'), 1500)
+      }
     } else {
       // HTTP error — try to read error field from response body
       let message = 'Erro ao processar o extrato. Tente novamente.'

@@ -155,6 +155,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { supabase } from '../supabase'
 
 onMounted(() => { document.title = 'Painel — Finanças Pessoais' })
@@ -204,14 +205,29 @@ const groupedByDate = computed(() => {
     .sort(([a], [b]) => b.localeCompare(a))
     .map(([date, items]) => ({ date, items }))
 })
+const route = useRoute()
 onMounted(async () => {
-  selectedMonth.value = months.value[0].value
+  // Se veio de uma importação com data específica, usar essa data
+  const mesParam = route.query.mes
+  if (mesParam && months.value.some(m => m.value === mesParam)) {
+    selectedMonth.value = mesParam
+  } else {
+    selectedMonth.value = months.value[0].value
+  }
   await fetchTransactions()
 })
 
 async function fetchTransactions() {
   loading.value = true
   n8nTotals.value = null
+
+  // Obtém o user_id da sessão atual
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    formError.value = 'Sessão expirada. Faça login novamente.'
+    loading.value = false
+    return
+  }
 
   // Otimização: buscar apenas as transações do mês selecionado
   const [year, month] = selectedMonth.value.split('-')
@@ -222,6 +238,7 @@ async function fetchTransactions() {
   const { data, error } = await supabase
     .from('transactions')
     .select('*')
+    .eq('user_id', user.id)
     .gte('date', startDate)
     .lte('date', endDate)
     .order('date', { ascending: false })
