@@ -1,14 +1,24 @@
 {
   "mcpServers": {
     "n8n": {
-      "command": "npx",
-      "args": ["-y", "n8n-mcp"],
+      "command": "npx.cmd",
+      "args": [
+        "-y",
+        "n8n-mcp"
+      ],
       "env": {
         "N8N_API_URL": "http://137.131.238.158:5678",
         "N8N_API_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzYmNkZjlmMS03NWE3LTRlMTMtYTRhNS1kZTEyYjRjNjI3NDgiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiYzQ0M2JlNDQtMDMyYy00Yjc0LWEzYzgtNzZjNDBjNmQ0Y2QxIiwiaWF0IjoxNzc1ODU5MzgzfQ.JvnxlvX7qziKM9MPHAAgiHixRlwtQDRCnACRnfM9TAs"
       },
       "disabled": false,
       "autoApprove": []
+    },
+    "n8n-native": {
+      "type": "sse",
+      "url": "https://deferred-chief-distances-draws.trycloudflare.com/mcp-server/http",
+      "headers": {
+        "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIzYmNkZjlmMS03NWE3LTRlMTMtYTRhNS1kZTEyYjRjNjI3NDgiLCJpc3MiOiJuOG4iLCJhdWQiOiJtY3Atc2VydmVyLWFwaSIsImp0aSI6IjUwYWNmYmRhLTZmYzctNDM2My04ZGQ3LWEwNjk1ZDAyNWViOSIsImlhdCI6MTc3OTE0OTYwNn0.sDZqu1utvUfMqucJ1bRFYjWvUefYaPnZPgkLQU_1K98"
+      }
     }
   }
 }
